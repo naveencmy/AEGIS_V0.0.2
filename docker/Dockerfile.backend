@@ -1,0 +1,37 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies for llama.cpp and PostgreSQL
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    cmake \
+    libopenblas-dev \
+    libpq-dev \
+    curl \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Poetry
+RUN pip install --no-cache-dir poetry
+
+# Copy dependency specifications
+COPY pyproject.toml poetry.lock* ./
+
+# Configure poetry to not create a virtualenv in container and install dependencies
+RUN poetry config virtualenvs.create false \
+    && poetry install --no-root --no-interaction --no-ansi
+
+# Copy project files
+COPY backend/ ./backend/
+COPY data/ ./data/
+COPY alembic/ ./alembic/
+COPY alembic.ini ./
+
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
+
+EXPOSE 8000
+
+# Run Alembic migrations and start FastAPI server
+CMD ["sh", "-c", "alembic upgrade head && uvicorn backend.main:app --host 0.0.0.0 --port 8000"]

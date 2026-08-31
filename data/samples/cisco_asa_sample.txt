@@ -1,0 +1,43 @@
+: Saved
+: 
+ASA Version 9.16(2)
+!
+hostname cisco-asa-edge-5525
+!
+names
+!
+interface GigabitEthernet0/0
+ nameif outside
+ security-level 0
+ ip address 203.0.113.1 255.255.255.0
+!
+interface GigabitEthernet0/1
+ nameif inside
+ security-level 100
+ ip address 192.168.1.1 255.255.255.0
+!
+interface GigabitEthernet0/2
+ nameif dmz
+ security-level 50
+ ip address 172.16.1.1 255.255.255.0
+!
+object network OBJ_DMZ_WEB
+ host 172.16.1.10
+!
+access-list OUTSIDE_IN extended permit ip any any
+access-list DMZ_IN extended permit tcp any host 172.16.1.10 eq 443
+access-list DMZ_IN extended permit tcp any host 172.16.1.10 eq 80
+access-list INSIDE_OUT extended permit ip 192.168.1.0 255.255.255.0 any
+!
+access-group OUTSIDE_IN in interface outside
+access-group DMZ_IN in interface dmz
+access-group INSIDE_OUT in interface inside
+!
+nat (inside,outside) source dynamic any interface
+nat (dmz,outside) source static OBJ_DMZ_WEB 203.0.113.10
+!
+telnet 0.0.0.0 0.0.0.0 outside
+logging enable
+logging host inside 192.168.1.50
+!
+end

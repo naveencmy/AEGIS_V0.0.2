@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config version="10.2.0" urldb="paloaltonetworks">
+  <mgt-config>
+    <users>
+      <entry name="admin">
+        <phash>$1$kldjfsdlkfjsdklfjsdkl</phash>
+        <permissions>
+          <role-based>
+            <superuser>yes</superuser>
+          </role-based>
+        </permissions>
+      </entry>
+    </users>
+  </mgt-config>
+  <devices>
+    <entry name="localhost.localdomain">
+      <network>
+        <interface>
+          <ethernet>
+            <entry name="ethernet1/1">
+              <layer3>
+                <ip>
+                  <entry name="203.0.113.254/24"/>
+                </ip>
+              </layer3>
+            </entry>
+            <entry name="ethernet1/2">
+              <layer3>
+                <ip>
+                  <entry name="10.0.1.1/24"/>
+                </ip>
+              </layer3>
+            </entry>
+          </ethernet>
+        </interface>
+      </network>
+      <system>
+        <hostname>pan-os-dc-fw01</hostname>
+      </system>
+      <vsys>
+        <entry name="vsys1">
+          <zone>
+            <entry name="untrust"/>
+            <entry name="trust"/>
+            <entry name="dmz"/>
+          </zone>
+          <rulebase>
+            <security>
+              <rules>
+                <entry name="ALLOW_ALL_INBOUND">
+                  <to>
+                    <member>trust</member>
+                  </to>
+                  <from>
+                    <member>untrust</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>any</member>
+                  </destination>
+                  <service>
+                    <member>any</member>
+                  </service>
+                  <application>
+                    <member>any</member>
+                  </application>
+                  <action>allow</action>
+                </entry>
+                <entry name="ALLOW_WEB_DMZ">
+                  <to>
+                    <member>dmz</member>
+                  </to>
+                  <from>
+                    <member>untrust</member>
+                  </from>
+                  <source>
+                    <member>any</member>
+                  </source>
+                  <destination>
+                    <member>10.0.1.50</member>
+                  </destination>
+                  <service>
+                    <member>service-https</member>
+                  </service>
+                  <application>
+                    <member>ssl</member>
+                    <member>web-browsing</member>
+                  </application>
+                  <action>allow</action>
+                </entry>
+              </rules>
+            </security>
+            <nat>
+              <rules>
+                <entry name="OUTBOUND_SNAT">
+                  <to>
+                    <member>untrust</member>
+                  </to>
+                  <from>
+                    <member>trust</member>
+                  </from>
+                </entry>
+              </rules>
+            </nat>
+          </rulebase>
+        </entry>
+      </vsys>
+    </entry>
+  </devices>
+</config>

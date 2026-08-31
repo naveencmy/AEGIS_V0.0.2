@@ -1,0 +1,3 @@
+# Place regulatory PDFs here for ingestion
+# Supported: Indian Patents Act, AYUSH GMP Guidelines, TRIPS Agreement, etc.
+# Run: python -m backend.ingestion.embedder --input-dir data/sample_regulatory/

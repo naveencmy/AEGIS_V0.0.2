@@ -1,0 +1,43 @@
+framework: CIS_v8
+name: "CIS Critical Security Controls Version 8"
+version: "8.0"
+controls:
+  - control_id: "CIS.4.1"
+    title: "Establish and Maintain a Secure Configuration Process"
+    description: "Establish and maintain a secure configuration process for network infrastructure devices (e.g., routers, switches, firewalls)."
+    guidance: "Review configuration files regularly and enforce explicit denial rules on boundary filtering devices."
+    severity: "High"
+    source_url: "https://www.cisecurity.org/controls/v8"
+    source_page: 22
+
+  - control_id: "CIS.4.2"
+    title: "Configure Secure Access Control Lists"
+    description: "Configure network infrastructure devices to drop non-essential traffic by default using strict Access Control Lists (ACLs)."
+    guidance: "Firewalls and routers must not contain permit any-any rules in production environments."
+    severity: "Critical"
+    source_url: "https://www.cisecurity.org/controls/v8"
+    source_page: 23
+
+  - control_id: "CIS.4.4"
+    title: "Implement and Manage Firewalls on Servers and Appliances"
+    description: "Manage firewalls on servers and network devices to control traffic between security zones."
+    guidance: "Segment corporate networks into trusted, untrusted, and DMZ partitions."
+    severity: "High"
+    source_url: "https://www.cisecurity.org/controls/v8"
+    source_page: 24
+
+  - control_id: "CIS.8.2"
+    title: "Collect Audit Logs"
+    description: "Ensure that local logging is enabled on all network devices and security gateways."
+    guidance: "Transmit audit logs to a central log management system."
+    severity: "Medium"
+    source_url: "https://www.cisecurity.org/controls/v8"
+    source_page: 38
+
+  - control_id: "CIS.12.1"
+    title: "Ensure Network Infrastructure is Up-to-Date"
+    description: "Maintain network architecture documentation and ensure unsupported protocols like Telnet are disabled."
+    guidance: "Mandate SSHv2 with strong cipher suites for all administrative connections."
+    severity: "Medium"
+    source_url: "https://www.cisecurity.org/controls/v8"
+    source_page: 50

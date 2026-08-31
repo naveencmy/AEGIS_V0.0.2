@@ -1,0 +1,61 @@
+{
+  "framework": "NIST_800_53_R5",
+  "name": "NIST SP 800-53 Revision 5: Security and Privacy Controls for Information Systems and Organizations",
+  "version": "Rev 5",
+  "controls": [
+    {
+      "control_id": "AC-4",
+      "title": "Information Flow Enforcement",
+      "description": "Enforce approved authorizations for controlling the flow of information within the system and between connected systems based on approved authorizations and security policies.",
+      "guidance": "Information flow enforcement regulates where information is allowed to travel within a system and between systems. Firewalls, boundary protection devices, and routers with access control lists (ACLs) must restrict traffic so that default permit-any policies are strictly prohibited.",
+      "severity": "Critical",
+      "source_url": "https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final",
+      "source_page": 47
+    },
+    {
+      "control_id": "SC-7",
+      "title": "Boundary Protection",
+      "description": "Monitor and control communications at external boundaries of the system and at key internal boundaries within the system; connect to external networks only through managed interfaces consisting of boundary protection devices arranged in accordance with enterprise security architecture.",
+      "guidance": "Managed interfaces include routers, firewalls, and proxy gateways. Firewalls must separate public, demilitarized (DMZ), and private enterprise zones. Deny by default must be configured on all ingress/egress points.",
+      "severity": "High",
+      "source_url": "https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final",
+      "source_page": 112
+    },
+    {
+      "control_id": "AC-3",
+      "title": "Access Enforcement",
+      "description": "Enforce approved authorizations for logical access to information and system resources in accordance with applicable access control policies.",
+      "guidance": "Network devices must restrict management access (SSH/HTTPS) to dedicated bastion hosts and administrative subnets.",
+      "severity": "High",
+      "source_url": "https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final",
+      "source_page": 44
+    },
+    {
+      "control_id": "AU-2",
+      "title": "Event Logging",
+      "description": "Identify that the system is capable of logging the specified event types: password changes, failed logins, administrative privilege escalations, firewall rule drops.",
+      "guidance": "Network security appliances must forward syslog messages to a central SIEM/PostgreSQL repository in real time.",
+      "severity": "Medium",
+      "source_url": "https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final",
+      "source_page": 63
+    },
+    {
+      "control_id": "IA-2",
+      "title": "Identification and Authentication (Organizational Users)",
+      "description": "Uniquely identify and authenticate organizational users (or processes acting on behalf of organizational users).",
+      "guidance": "Enforce AAA authentication and disable shared administrative accounts on network devices.",
+      "severity": "High",
+      "source_url": "https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final",
+      "source_page": 81
+    },
+    {
+      "control_id": "CM-7",
+      "title": "Least Functionality",
+      "description": "Configure the system to provide only essential capabilities and prohibit or restrict the use of non-essential services, protocols, and ports.",
+      "guidance": "Disable insecure legacy protocols such as Telnet, HTTP, and SNMPv1/v2c across all network interfaces.",
+      "severity": "High",
+      "source_url": "https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final",
+      "source_page": 73
+    }
+  ]
+}

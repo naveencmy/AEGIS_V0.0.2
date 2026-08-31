@@ -1,0 +1,43 @@
+{
+  "framework": "ISO27001_2022",
+  "name": "ISO/IEC 27001:2022 Information Security Management",
+  "version": "2022",
+  "controls": [
+    {
+      "control_id": "A.8.20",
+      "title": "Network Security",
+      "description": "Networks and network devices shall be secured, managed and controlled to protect information in systems and applications.",
+      "guidance": "Implement boundary firewalls, network access controls, and prevent unauthorized inter-network communications.",
+      "severity": "High",
+      "source_url": "https://www.iso.org/standard/27001",
+      "source_page": 18
+    },
+    {
+      "control_id": "A.8.22",
+      "title": "Segregation of Networks",
+      "description": "Groups of information services, users and information systems shall be segregated on networks.",
+      "guidance": "Segregate network perimeters using VLANs, zones, and stateful firewalls between public and private internal data assets.",
+      "severity": "High",
+      "source_url": "https://www.iso.org/standard/27001",
+      "source_page": 19
+    },
+    {
+      "control_id": "A.8.24",
+      "title": "Use of Cryptography",
+      "description": "Rules for the effective use of cryptography, including cryptographic key management, shall be defined and implemented.",
+      "guidance": "Enforce strong TLS and SSH encryption for management communications and disable plaintext access.",
+      "severity": "Medium",
+      "source_url": "https://www.iso.org/standard/27001",
+      "source_page": 20
+    },
+    {
+      "control_id": "A.8.15",
+      "title": "Logging",
+      "description": "Logs that record activities, exceptions, faults and other relevant events shall be produced, stored, protected and analyzed.",
+      "guidance": "Configure firewall drop logging and remote syslog aggregation.",
+      "severity": "Medium",
+      "source_url": "https://www.iso.org/standard/27001",
+      "source_page": 16
+    }
+  ]
+}

@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: ankane/pgvector:v0.7.4
+    container_name: aegis_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-aegis}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aegis_secure_pass_2026}
+      POSTGRES_DB: ${POSTGRES_DB:-aegis_ntro}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/init-scripts:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aegis} -d ${POSTGRES_DB:-aegis_ntro}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    container_name: aegis_backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-aegis}:${POSTGRES_PASSWORD:-aegis_secure_pass_2026}@postgres:5432/${POSTGRES_DB:-aegis_ntro}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-aegis}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aegis_secure_pass_2026}
+      POSTGRES_DB: ${POSTGRES_DB:-aegis_ntro}
+      LLM_MODEL_PATH: /models/mistral-7b-instruct-v0.3.Q4_K_M.gguf
+      JWT_SECRET: ${JWT_SECRET:-aegis_super_secret_jwt_key_ntro_sih2026}
+      APP_ENV: production
+      MOCK_LLM: ${MOCK_LLM:-false}
+    volumes:
+      - ./models:/models:ro
+      - ./data:/app/data:ro
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+    container_name: aegis_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:

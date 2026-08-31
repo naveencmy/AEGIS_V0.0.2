@@ -1,0 +1,18 @@
+# GBNF Grammar for Structured AuditResponse JSON
+
+root ::= AuditResponse
+
+AuditResponse ::= "{" ws "\"findings\":" ws FindingList "," ws "\"summary\":" ws SummaryObj ws "}"
+
+FindingList ::= "[" ws (Finding ("," ws Finding)*)? ws "]"
+
+Finding ::= "{" ws "\"control_id\":" ws string "," ws "\"framework\":" ws string "," ws "\"severity\":" ws SeverityVal "," ws "\"finding_title\":" ws string "," ws "\"finding_description\":" ws string "," ws "\"device_rule_reference\":" ws string "," ws "\"remediation\":" ws string "," ws "\"citation_source\":" ws string "," ws "\"citation_section\":" ws string "," ws "\"citation_url\":" ws (string | "null") "," ws "\"citation_page\":" ws (number | "null") "," ws "\"confidence_score\":" ws number ws "}"
+
+SeverityVal ::= "\"Critical\"" | "\"High\"" | "\"Medium\"" | "\"Low\""
+
+SummaryObj ::= "{" ws "\"total_findings\":" ws integer "," ws "\"critical_count\":" ws integer "," ws "\"high_count\":" ws integer "," ws "\"medium_count\":" ws integer "," ws "\"low_count\":" ws integer "," ws "\"compliance_score_percent\":" ws number ws "}"
+
+string ::= "\"" ([^"\\] | "\\" (["\\/bfnrt] | "u" [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F]))* "\""
+number ::= ("-"? [0-9]+ ("." [0-9]+)?)
+integer ::= [0-9]+
+ws ::= [ \t\n\r]*

@@ -1,0 +1,17 @@
+AEGIS-NTRO: Sovereign AI-Driven Multi-Vendor Network Compliance Auditor
+Copyright 2026 AEGIS-NTRO Engineering Team & Contributors
+
+This product includes software developed as part of the Smart India Hackathon
+(SIH26155 / NTRO Theme: Blockchain & Cybersecurity) and open-source contributions.
+
+===============================================================================
+Third-Party Software and Acknowledgments:
+===============================================================================
+- FastAPI (MIT License) - Copyright (c) Sebastián Ramírez
+- SQLAlchemy (MIT License) - Copyright (c) Mike Bayer
+- pgvector (PostgreSQL License) - Copyright (c) Andrew Kane
+- BAAI/bge-m3 & BAAI/bge-reranker-base (MIT/Apache 2.0) - Beijing Academy of Artificial Intelligence
+- llama.cpp (MIT License) - Copyright (c) Georgi Gerganov
+- React & Vite (MIT License) - Copyright (c) Meta Platforms, Inc. & Evan You
+- Lucide Icons (ISC License) - Copyright (c) Lucide Contributors
+- Tailwind CSS (MIT License) - Copyright (c) Tailwind Labs, Inc.

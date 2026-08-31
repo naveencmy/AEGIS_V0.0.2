@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+message: "If you use AEGIS-NTRO in your research, audits, or publications, please cite it as below."
+title: "AEGIS-NTRO: Sovereign AI-Driven Multi-Vendor Network Security Compliance Auditor"
+authors:
+  - name: "AEGIS Engineering Team"
+    website: "https://github.com/naveencmy/AEGIS"
+version: 2.0.0-rc1
+date-released: 2026-08-31
+url: "https://github.com/naveencmy/AEGIS"
+license: "Apache-2.0"
+keywords:
+  - "network-security"
+  - "compliance-auditing"
+  - "nist-800-53"
+  - "cis-controls"
+  - "iso-27001"
+  - "rag-pipeline"
+  - "pgvector"
+  - "sovereign-ai"
+  - "cisco-asa"
+  - "palo-alto"
+  - "juniper-junos"
+  - "fortinet"
+abstract: "AEGIS-NTRO is an air-gapped, sovereign, citation-native network compliance auditing system designed for national research and defense infrastructures. It evaluates multi-vendor network configurations using hybrid dense/sparse retrieval within PostgreSQL and GBNF-grammar-constrained LLM reasoning."

@@ -1,0 +1,67 @@
+name: "🐛 Bug Report"
+description: File a bug report or parser error in AEGIS-NTRO
+title: "[BUG]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report an issue! Please ensure you have searched existing issues before submitting a duplicate.
+  - type: input
+    id: version
+    attributes:
+      label: AEGIS Version
+      description: What version or Git commit of AEGIS-NTRO are you running?
+      placeholder: "e.g., v2.0.0-rc1 / commit abc1234"
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected Subsystem
+      description: Which part of the platform is experiencing the issue?
+      options:
+        - "Backend - Parser (Cisco / Palo Alto / Juniper / Fortinet)"
+        - "Backend - RAG Retrieval (pgvector / BM25 / RRF / Re-ranker)"
+        - "Backend - AI Reasoning / LLM Engine / GBNF"
+        - "Backend - Database / Migrations (Alembic)"
+        - "Frontend - Web UI & Visualizations"
+        - "Docker / Deployment / CI Pipeline"
+        - "Other"
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the Bug
+      description: A clear and concise description of what the bug is.
+      placeholder: "When uploading a Juniper configuration with nested firewall terms..."
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps To Reproduce
+      description: Detailed steps to reproduce the behavior.
+      placeholder: |
+        1. Go to 'Compliance Audit'
+        2. Upload device config 'sample_junos.set'
+        3. Select framework 'NIST SP 800-53 Rev 5'
+        4. See error in logs...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs or Error Output
+      description: Paste relevant terminal logs or tracebacks (please redact any confidential keys/IPs).
+      render: shell
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission Checklist
+      options:
+        - label: I have verified this is not a duplicate issue.
+          required: true
+        - label: I have redacted all sensitive credentials, IPs, and passwords from logs/configs.
+          required: true

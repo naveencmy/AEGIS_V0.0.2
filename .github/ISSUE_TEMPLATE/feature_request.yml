@@ -1,0 +1,44 @@
+name: "✨ Feature Request"
+description: Propose a new vendor parser, compliance standard, or architectural feature
+title: "[FEAT]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for suggesting an improvement for AEGIS-NTRO!
+  - type: dropdown
+    id: category
+    attributes:
+      label: Feature Category
+      description: What category best fits this feature request?
+      options:
+        - "New Vendor Configuration Parser (e.g., Arista EOS, Check Point, pfSense)"
+        - "New Regulatory Standard / Framework (e.g., HIPAA, GDPR, FedRAMP High)"
+        - "RAG Engine / Embedding & Re-ranking Enhancement"
+        - "User Interface / Visual Dashboard / Reporting"
+        - "Security & Guardrails"
+        - "Deployment & Infrastructure"
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement / Motivation
+      description: Is your feature request related to a problem or limitation? Please explain.
+      placeholder: "We currently lack native syntax parsing for Check Point Gaia CLI rules..."
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution / Implementation Idea
+      description: Describe the solution you'd like to see implemented.
+      placeholder: "Implement an AST parser in backend/parsers/checkpoint.py supporting ..."
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Any alternative solutions or workarounds you've considered.

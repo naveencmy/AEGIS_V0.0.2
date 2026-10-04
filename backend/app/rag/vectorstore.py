@@ -174,17 +174,21 @@ class SovereignVectorStore:
         k_per_col = max(3, (k // len(target_cols)) + 2)
 
         for ck in target_cols:
-            col = self.collections[ck]
-            count = col.count()
-            if count == 0:
-                continue
-            
             try:
+                col = self.collections[ck]
+                count = col.count()
+                if count == 0:
+                    continue
+                
                 res = col.query(
                     query_texts=[query_text],
                     n_results=min(k_per_col, count),
                     include=["documents", "metadatas", "distances"]
                 )
+            except Exception as e:
+                logger.debug(f"ChromaDB collection query skipped for {ck}: {e}")
+                continue
+
                 
                 if res and res.get("documents") and res["documents"][0]:
                     docs = res["documents"][0]

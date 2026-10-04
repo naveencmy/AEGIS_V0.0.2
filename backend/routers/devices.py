@@ -1,140 +1,173 @@
-"""Device configuration management and parsing endpoints."""
+"""Device upload, listing, retrieval, and configuration drift router."""
 
+import logging
 import uuid
-from typing import Any
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.core.logging import logger
-from backend.dependencies import get_db
+from backend.dependencies import get_db, limiter
 from backend.models.device import DeviceConfig
-from backend.schemas.device import DeviceConfigResponse, DeviceUploadResponse
-from backend.services.parser_service import parser_service
-from backend.services.queue_service import queue_service
+from backend.schemas.audit import (
+    DeviceUploadResponse,
+    DriftAnalysisResponse,
+    DriftAnalyzeRequest,
+    DriftLineResponse,
+    SemanticDriftResponse,
+)
+from backend.services.drift_service import drift_service
 
 router = APIRouter(prefix="/devices", tags=["Devices"])
+logger = logging.getLogger("aegis.router.devices")
+
+ALLOWED_VENDORS = {
+    "cisco_ios", "cisco_asa", "cisco",
+    "palo_alto", "paloalto",
+    "juniper", "junos",
+    "fortinet", "fortigate", "fortios",
+}
 
 
 @router.post("/upload", response_model=DeviceUploadResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("30/minute")
 async def upload_device_config(
-    file: UploadFile = File(..., description="Raw device configuration file"),
-    vendor: str = Form(..., description="Vendor: cisco, palo_alto, juniper, fortinet"),
-    device_name: str = Form(..., description="Device hostname or identifier"),
-    device_type: str = Form(default="firewall", description="firewall, router, switch"),
+    request: Request,
+    file: UploadFile = File(...),
+    vendor: str = Form(...),
+    device_name: str = Form(default=None),
+    device_type: str = Form(default="firewall"),
     db: AsyncSession = Depends(get_db),
 ) -> DeviceUploadResponse:
-    """Upload a network device configuration for automated parsing and audit."""
-    content_bytes = await file.read()
-    raw_config = content_bytes.decode("utf-8", errors="replace")
+    """Upload and store a raw device configuration file."""
+    vendor_normalized = vendor.lower().strip().replace("-", "_").replace(" ", "_")
+    if vendor_normalized not in ALLOWED_VENDORS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Unsupported vendor '{vendor}'. Supported: {sorted(ALLOWED_VENDORS)}",
+        )
 
-    # Quick synchronous parse to validate and store parsed rules
-    parsed = parser_service.parse_config(vendor, raw_config)
-    
+    # Read config content
+    content_bytes = await file.read()
+    if len(content_bytes) > 10 * 1024 * 1024:  # 10 MB limit
+        raise HTTPException(status_code=413, detail="Config file too large (max 10 MB)")
+
+    try:
+        raw_config = content_bytes.decode("utf-8", errors="replace")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Unable to decode file as UTF-8")
+
     device = DeviceConfig(
-        device_name=device_name or parsed.hostname,
-        vendor=vendor.lower(),
+        vendor=vendor_normalized,
+        device_name=device_name or file.filename,
         device_type=device_type,
         raw_config=raw_config,
-        parsed_rules=parsed.model_dump(),
-        status="parsed",
+        filename=file.filename,
     )
     db.add(device)
-    await db.commit()
-    await db.refresh(device)
+    await db.flush()
 
-    # Also enqueue background parsing job to maintain queue pipeline
-    await queue_service.enqueue(
-        db=db,
-        job_type="parse_config",
-        payload={"device_config_id": str(device.id)},
-    )
-
-    logger.info("Device config uploaded and parsed", device_id=str(device.id), vendor=vendor)
+    logger.info("Device config uploaded", extra={"vendor": vendor_normalized, "id": str(device.id)})
 
     return DeviceUploadResponse(
-        device_config_id=device.id,
-        status="parsed",
-        message="Configuration uploaded and parsed successfully",
-        vendor=vendor,
+        id=device.id,
+        vendor=device.vendor,
         device_name=device.device_name,
+        device_type=device.device_type,
+        filename=device.filename,
+        created_at=device.created_at,
     )
 
 
-@router.get("", response_model=list[DeviceConfigResponse])
+@router.get("", response_model=List[DeviceUploadResponse])
 async def list_devices(
-    skip: int = 0,
-    limit: int = 50,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-) -> list[DeviceConfigResponse]:
-    """List all ingested device configurations."""
-    query = select(DeviceConfig).order_by(DeviceConfig.uploaded_at.desc()).offset(skip).limit(limit)
-    result = await db.execute(query)
+) -> List[DeviceUploadResponse]:
+    """List all registered device configurations."""
+    result = await db.execute(
+        select(DeviceConfig)
+        .order_by(DeviceConfig.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+    )
     devices = result.scalars().all()
-    
     return [
-        DeviceConfigResponse(
+        DeviceUploadResponse(
             id=d.id,
-            device_name=d.device_name,
             vendor=d.vendor,
+            device_name=d.device_name,
             device_type=d.device_type,
-            status=d.status,
-            uploaded_at=d.uploaded_at,
-            raw_config_snippet=d.raw_config[:500] if d.raw_config else None,
-            parsed_rules=d.parsed_rules,
+            filename=d.filename,
+            created_at=d.created_at,
         )
         for d in devices
     ]
 
 
-@router.get("/{device_config_id}", response_model=DeviceConfigResponse)
-async def get_device_config(
-    device_config_id: uuid.UUID,
+@router.get("/{device_id}", response_model=DeviceUploadResponse)
+async def get_device(
+    device_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-) -> DeviceConfigResponse:
-    """Retrieve specific device configuration and extracted security rules."""
-    device = await db.get(DeviceConfig, device_config_id)
+) -> DeviceUploadResponse:
+    """Retrieve a device config by ID."""
+    result = await db.execute(select(DeviceConfig).where(DeviceConfig.id == device_id))
+    device = result.scalar_one_or_none()
     if not device:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Device configuration '{device_config_id}' not found",
-        )
+        raise HTTPException(status_code=404, detail=f"Device '{device_id}' not found")
 
-    return DeviceConfigResponse(
+    return DeviceUploadResponse(
         id=device.id,
-        device_name=device.device_name,
         vendor=device.vendor,
+        device_name=device.device_name,
         device_type=device.device_type,
-        status=device.status,
-        uploaded_at=device.uploaded_at,
-        raw_config_snippet=device.raw_config,
-        parsed_rules=device.parsed_rules,
+        filename=device.filename,
+        created_at=device.created_at,
     )
 
 
-@router.post("/{device_config_id}/parse", response_model=DeviceConfigResponse)
-async def reparse_device_config(
-    device_config_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
-) -> DeviceConfigResponse:
-    """Trigger re-parsing of raw device configuration."""
-    device = await db.get(DeviceConfig, device_config_id)
-    if not device:
-        raise HTTPException(status_code=404, detail="Device not found")
-
-    parsed = parser_service.parse_config(device.vendor, device.raw_config)
-    device.parsed_rules = parsed.model_dump()
-    device.status = "parsed"
-    await db.commit()
-    await db.refresh(device)
-
-    return DeviceConfigResponse(
-        id=device.id,
-        device_name=device.device_name,
-        vendor=device.vendor,
-        device_type=device.device_type,
-        status=device.status,
-        uploaded_at=device.uploaded_at,
-        raw_config_snippet=device.raw_config,
-        parsed_rules=device.parsed_rules,
+@router.post("/drift", response_model=DriftAnalysisResponse)
+@limiter.limit("20/minute")
+async def analyze_config_drift(
+    request: Request,
+    body: DriftAnalyzeRequest,
+) -> DriftAnalysisResponse:
+    """Analyze configuration drift between baseline and current configuration."""
+    report = drift_service.analyze_drift(
+        vendor=body.vendor,
+        baseline_config=body.baseline_config,
+        current_config=body.current_config,
+        hostname=body.hostname or "network-device",
+    )
+    return DriftAnalysisResponse(
+        vendor=report.vendor,
+        hostname=report.hostname,
+        total_added_lines=report.total_added_lines,
+        total_removed_lines=report.total_removed_lines,
+        drift_severity=report.drift_severity,
+        security_regressions_detected=report.security_regressions_detected,
+        security_improvements_detected=report.security_improvements_detected,
+        semantic_drift=[
+            SemanticDriftResponse(
+                category=s.category,
+                action=s.action,
+                severity=s.severity,
+                description=s.description,
+                remediation_advice=s.remediation_advice,
+            )
+            for s in report.semantic_drift
+        ],
+        line_diff=[
+            DriftLineResponse(
+                change_type=l.change_type,
+                line_number=l.line_number,
+                content=l.content,
+                security_impact=l.security_impact,
+                impact_description=l.impact_description,
+            )
+            for l in report.line_diff
+        ],
+        summary=report.summary,
     )

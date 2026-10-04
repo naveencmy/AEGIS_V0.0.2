@@ -1,65 +1,161 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ─── Design Tokens ────────────────────────────────────────────────────── */
 :root {
-  --obsidian: #0A0E17;
-  --obsidian-light: #111827;
-  --obsidian-card: #131C2E;
-  --indigo: #6366F1;
-  --indigo-glow: rgba(99, 102, 241, 0.15);
-  --cyan: #06B6D4;
-  --text-primary: #F8FAFC;
-  --text-secondary: #94A3B8;
-  --text-muted: #64748B;
-  --critical: #EF4444;
-  --high: #F97316;
-  --medium: #EAB308;
-  --low: #22C55E;
-  --border: rgba(99, 102, 241, 0.12);
+  --surface-base:    #020817;
+  --surface-raised:  #0B1120;
+  --surface-overlay: #0E1628;
+  --surface-card:    #111827;
+  --surface-muted:   #1A2235;
+  --surface-border:  #1E293B;
+  --surface-border-hi: #334155;
+
+  --brand:           #6366F1;
+  --brand-dim:       rgba(99,102,241,0.12);
+  --brand-glow:      rgba(99,102,241,0.25);
+
+  --teal:            #06B6D4;
+  --teal-dim:        rgba(6,182,212,0.12);
+
+  --critical:        #EF4444;
+  --high:            #F97316;
+  --medium:          #F59E0B;
+  --low:             #22C55E;
+
+  --text-primary:    #F1F5F9;
+  --text-secondary:  #94A3B8;
+  --text-muted:      #475569;
 }
+
+/* ─── Base ─────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
 
 body {
   margin: 0;
-  background-color: var(--obsidian);
+  background-color: var(--surface-base);
+  background-image:
+    radial-gradient(ellipse 80% 40% at 50% -5%, rgba(99,102,241,0.14), transparent);
   color: var(--text-primary);
-  font-family: 'Inter', sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
+  min-height: 100dvh;
 }
 
-/* Custom modern scrollbars */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+code, pre, kbd, samp {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
 }
 
-::-webkit-scrollbar-track {
-  background: #0A0E17;
+/* ─── Scrollbars ───────────────────────────────────────────────────────── */
+::-webkit-scrollbar          { width: 4px; height: 4px; }
+::-webkit-scrollbar-track    { background: var(--surface-base); }
+::-webkit-scrollbar-thumb    { background: var(--surface-border-hi); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+/* ─── Focus ────────────────────────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid #38BDF8 !important;
+  outline-offset: 2px !important;
 }
 
-::-webkit-scrollbar-thumb {
-  background: #1E293B;
-  border-radius: 3px;
+/* ─── Utilities ────────────────────────────────────────────────────────── */
+@layer utilities {
+  .glass {
+    background: rgba(14, 22, 40, 0.80);
+    backdrop-filter: blur(16px) saturate(1.4);
+    -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  }
+
+  .glass-card {
+    background: rgba(17, 24, 39, 0.75);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(30,41,59,0.8);
+  }
+
+  .glow-brand  { box-shadow: 0 0 28px rgba(99,102,241,0.22); }
+  .glow-teal   { box-shadow: 0 0 28px rgba(6,182,212,0.20); }
+  .glow-danger { box-shadow: 0 0 28px rgba(239,68,68,0.22); }
+
+  /* Sovereign grid background overlay */
+  .bg-sovereign-grid {
+    background-image:
+      linear-gradient(rgba(30,41,59,0.4) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(30,41,59,0.4) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+
+  /* Scan-line shimmer for loading states */
+  .scan-shimmer {
+    position: relative;
+    overflow: hidden;
+  }
+  .scan-shimmer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, transparent 0%, rgba(99,102,241,0.08) 50%, transparent 100%);
+    animation: scanLine 2.2s ease-in-out infinite;
+  }
+
+  /* Severity accent left-border */
+  .border-l-critical { border-left: 3px solid var(--critical); }
+  .border-l-high     { border-left: 3px solid var(--high); }
+  .border-l-medium   { border-left: 3px solid var(--medium); }
+  .border-l-low      { border-left: 3px solid var(--low); }
+
+  /* Animate entrance */
+  .animate-slide-in-up { animation: slideInUp 0.22s ease-out both; }
+  .animate-fade-in     { animation: fadeIn 0.18s ease-out both; }
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: #6366F1;
+/* ─── Keyframes ────────────────────────────────────────────────────────── */
+@keyframes slideInUp {
+  from { transform: translateY(10px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
 }
 
-.glass-panel {
-  background: rgba(19, 28, 46, 0.7);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(99, 102, 241, 0.15);
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
-.glow-indigo {
-  box-shadow: 0 0 25px rgba(99, 102, 241, 0.2);
+@keyframes scanLine {
+  0%   { transform: translateY(-100%); }
+  100% { transform: translateY(200%); }
 }
 
-.glow-cyan {
-  box-shadow: 0 0 25px rgba(6, 182, 212, 0.2);
+/* ─── Prose override for chat messages ─────────────────────────────────── */
+.prose-sovereign {
+  color: #CBD5E1;
+  font-size: 0.8125rem;
+  line-height: 1.65;
+}
+.prose-sovereign h1,.prose-sovereign h2,.prose-sovereign h3 { color: #F1F5F9; margin: 0.5em 0 0.25em; }
+.prose-sovereign p    { margin: 0.35em 0; }
+.prose-sovereign ul   { padding-left: 1.2em; margin: 0.35em 0; }
+.prose-sovereign li   { margin: 0.15em 0; }
+.prose-sovereign code { background: rgba(30,41,59,0.9); padding: 0.1em 0.35em; border-radius: 3px; font-size: 0.82em; color: #93C5FD; }
+.prose-sovereign strong { color: #F1F5F9; font-weight: 600; }
+
+/* ─── Print ─────────────────────────────────────────────────────────────── */
+@media print {
+  body { background: #fff !important; color: #000 !important; }
+  .no-print, nav, .glass { display: none !important; }
+}
+
+/* ─── Reduced motion ──────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

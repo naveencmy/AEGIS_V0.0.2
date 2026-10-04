@@ -1,209 +1,399 @@
-"""Audit Orchestration Service coordinating Parser, Hybrid RAG, LLM Reasoning, and Verification."""
+"""
+AEGIS-NTRO — Audit Orchestration Service.
+Parses multi-vendor device configurations to Canonical AST, retrieves relevant compliance controls via Hybrid RAG,
+generates grounded findings with vendor-specific remediation playbooks, computes risk-weighted CVSS compliance score,
+and cryptographically anchors the results to the blockchain ledger.
+"""
 
-import uuid
+from __future__ import annotations
+
+import logging
 from datetime import datetime, timezone
 from typing import Any
-from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
-from backend.core.logging import logger
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from backend.models.audit import AuditFinding, AuditJob
 from backend.models.device import DeviceConfig
-from backend.models.framework import FrameworkControl
-from backend.schemas.audit import AuditCreateResponse, FindingSchema
-from backend.services.citation_service import citation_service
+from backend.schemas.audit import AuditCreateResponse
+from backend.services.blockchain_service import blockchain_service
 from backend.services.llm_service import llm_service
 from backend.services.parser_service import parser_service
-from backend.services.queue_service import queue_service
 from backend.services.rag_service import rag_service
+
+logger = logging.getLogger("aegis.audit.service")
 
 
 class AuditService:
-    """End-to-end Audit orchestration service."""
-
-    def __init__(self) -> None:
-        # Register background job handlers
-        queue_service.register_handler("parse_config", self._handle_parse_config_job)
-        queue_service.register_handler("run_audit", self._handle_run_audit_job)
+    """End-to-end compliance audit orchestrator with multi-vendor and blockchain support."""
 
     async def create_audit_job(
         self,
         db: AsyncSession,
-        device_config_id: uuid.UUID,
+        device_config_id,
         frameworks: list[str],
     ) -> AuditCreateResponse:
-        """Create and queue a compliance audit job."""
-        # 1. Verify device config exists
-        device = await db.get(DeviceConfig, device_config_id)
+        """Create, execute, persist, and anchor a compliance audit job."""
+        # Fetch device config
+        result = await db.execute(
+            select(DeviceConfig).where(DeviceConfig.id == device_config_id)
+        )
+        device = result.scalar_one_or_none()
         if not device:
-            raise ValueError(f"Device config {device_config_id} not found")
+            raise ValueError(f"Device config '{device_config_id}' not found")
 
-        # 2. Create AuditJob in database
-        audit_job = AuditJob(
-            device_config_id=device_config_id,
+        # Create audit job record
+        job = AuditJob(
+            device_config_id=device.id,
             framework_filter=frameworks,
-            status="queued",
-            started_at=datetime.now(timezone.utc),
+            status="RUNNING",
         )
-        db.add(audit_job)
-        await db.commit()
-        await db.refresh(audit_job)
+        db.add(job)
+        await db.flush()
 
-        # 3. Enqueue job into PostgreSQL queue
-        await queue_service.enqueue(
-            db=db,
-            job_type="run_audit",
-            payload={
-                "audit_job_id": str(audit_job.id),
-                "device_config_id": str(device_config_id),
-                "frameworks": frameworks,
-            },
-        )
-
-        return AuditCreateResponse(
-            audit_job_id=audit_job.id,
-            status="queued",
-            estimated_time_seconds=20,
-            message="Audit job queued successfully",
-        )
-
-    async def _handle_parse_config_job(self, payload: dict[str, Any], db: AsyncSession) -> None:
-        """Background worker handler for config parsing."""
-        device_id = uuid.UUID(payload["device_config_id"])
-        device = await db.get(DeviceConfig, device_id)
-        if not device:
-            return
-
-        parsed = parser_service.parse_config(device.vendor, device.raw_config)
-        device.parsed_rules = parsed.model_dump()
-        device.status = "parsed"
-        await db.commit()
-        logger.info("Device configuration parsed in background", device_id=str(device_id))
-
-    async def _handle_run_audit_job(self, payload: dict[str, Any], db: AsyncSession) -> None:
-        """Background worker handler for running compliance audit reasoning."""
-        audit_job_id = uuid.UUID(payload["audit_job_id"])
-        device_config_id = uuid.UUID(payload["device_config_id"])
-        frameworks = payload.get("frameworks", ["NIST_800_53_R5"])
-
-        audit_job = await db.get(AuditJob, audit_job_id)
-        device = await db.get(DeviceConfig, device_config_id)
-
-        if not audit_job or not device:
-            return
-
-        # Update status to running
-        audit_job.status = "running"
-        await db.commit()
-
-        # Parse config if not parsed yet
-        if not device.parsed_rules:
-            parsed = parser_service.parse_config(device.vendor, device.raw_config)
-            device.parsed_rules = parsed.model_dump()
-            device.status = "parsed"
-            await db.commit()
-
-        flat_rules = parser_service.extract_rules(
-            device.vendor,
-            parser_service.parse_config(device.vendor, device.raw_config),
-        )
-
-        all_findings: list[FindingSchema] = []
-
-        # Audit against each selected framework
-        for fw in frameworks:
-            logger.info("Auditing device against framework", framework=fw, device=device.device_name)
-            
-            # Hybrid search for related controls
-            query_context = f"Firewall network security rules access control packet filtering {device.vendor} {' '.join(r.get('details', '') for r in flat_rules[:5])}"
-            retrieved_controls = await rag_service.hybrid_search(
-                db=db,
-                query=query_context,
-                framework=fw,
-                top_k=6,
+        try:
+            # ── 1. Multi-Vendor Canonical AST Parsing ────────────────────────
+            parsed_config = parser_service.parse_config(device.vendor, device.raw_config)
+            parsed_rules = parser_service.extract_rules(device.vendor, parsed_config)
+            logger.info(
+                "Device config parsed into Canonical AST",
+                extra={
+                    "vendor": device.vendor,
+                    "hostname": parsed_config.hostname,
+                    "rules_extracted": len(parsed_rules),
+                },
             )
 
-            # Generate cited audit response using LLM / local reasoning
-            llm_result = await llm_service.generate_audit_response(
+            # ── 2. Hybrid RAG Retrieval across Frameworks ────────────────────
+            all_query = " ".join([
+                r.get("context", "") for r in parsed_rules[:6]
+            ]) or "network security compliance boundary protection access control"
+
+            retrieved_controls = []
+            for fw in frameworks:
+                controls = await rag_service.hybrid_search(
+                    db=db, query=all_query, framework=fw, top_k=8
+                )
+                retrieved_controls.extend(controls)
+
+            # De-duplicate controls
+            seen = set()
+            unique_controls = []
+            for c in retrieved_controls:
+                key = str(c.id)
+                if key not in seen:
+                    seen.add(key)
+                    unique_controls.append(c)
+
+            # ── 3. Sovereign LLM Reasoning & Finding Generation ──────────────
+            raw_findings = await llm_service.generate_audit_findings(
+                device_rules=parsed_rules,
+                retrieved_controls=unique_controls,
                 vendor=device.vendor,
-                device_type=device.device_type,
-                hostname=device.device_name,
-                parsed_rules=flat_rules,
-                retrieved_controls=retrieved_controls,
+                frameworks=frameworks,
             )
 
-            # Ground truth control mapping for citation enrichment & validation
-            valid_control_ids = {c.control_id for c in retrieved_controls}
-            control_meta = {
-                c.control_id: {
-                    "source_url": c.source_url,
-                    "source_page": c.source_page,
-                    "framework": c.framework,
-                }
-                for c in retrieved_controls
-            }
+            # ── 4. Generate Vendor-Specific Remediation & Persist Findings ────
+            findings_objs: list[AuditFinding] = []
+            for f in raw_findings:
+                sev = str(f.get("severity", "MEDIUM")).upper()[:16]
+                ctrl_id = str(f.get("control_id", ""))[:64]
+                rule_ref = str(f.get("device_rule_reference", "")) if f.get("device_rule_reference") else ""
 
-            # Filter hallucinated controls
-            validated_findings = [
-                f for f in llm_result.findings
-                if citation_service.validate_finding(f, valid_control_ids)
-            ]
+                # Construct structured remediation playbook for vendor
+                rem_steps, verif_cmd, rollback_steps, risk_lvl, est_mins = self._build_remediation_playbook(
+                    vendor=device.vendor,
+                    control_id=ctrl_id,
+                    rule_ref=rule_ref,
+                    raw_remediation=str(f.get("remediation", "")),
+                )
 
-            # Enrich citations with ground-truth URLs & pages
-            enriched_findings = citation_service.enrich_citations(validated_findings, control_meta)
-            all_findings.extend(enriched_findings)
+                finding = AuditFinding(
+                    audit_job_id=job.id,
+                    control_id=ctrl_id,
+                    framework=str(f.get("framework", frameworks[0]))[:64],
+                    severity=sev,
+                    finding_title=str(f.get("finding_title", ""))[:512],
+                    finding_description=str(f.get("finding_description", "")),
+                    device_rule_reference=rule_ref[:2000] if rule_ref else None,
+                    remediation=str(f.get("remediation", ""))[:2000] if f.get("remediation") else None,
+                    remediation_steps=rem_steps,
+                    verification_command=verif_cmd,
+                    rollback_steps=rollback_steps,
+                    risk_level=risk_lvl,
+                    estimated_minutes=est_mins,
+                    citation_source=str(f.get("citation_source", ""))[:255] if f.get("citation_source") else None,
+                    citation_section=str(f.get("citation_section", ""))[:255] if f.get("citation_section") else None,
+                    citation_page=str(f.get("citation_page", ""))[:32] if f.get("citation_page") else None,
+                    citation_url=str(f.get("citation_url", ""))[:1024] if f.get("citation_url") else None,
+                    confidence_score=float(f.get("confidence_score", 0.90)),
+                )
+                db.add(finding)
+                findings_objs.append(finding)
 
-        # Save findings to database
-        critical_count = 0
-        high_count = 0
-        medium_count = 0
-        low_count = 0
+            # ── 5. Compute Risk-Weighted CVSS Compliance Score ────────────────
+            sev_counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}
+            for fo in findings_objs:
+                sev_counts[fo.severity] = sev_counts.get(fo.severity, 0) + 1
 
-        for f in all_findings:
-            if f.severity == "Critical":
-                critical_count += 1
-            elif f.severity == "High":
-                high_count += 1
-            elif f.severity == "Medium":
-                medium_count += 1
-            else:
-                low_count += 1
-
-            finding_record = AuditFinding(
-                audit_job_id=audit_job_id,
-                control_id=f.control_id,
-                framework=f.framework,
-                severity=f.severity,
-                finding_title=f.finding_title,
-                finding_description=f.finding_description,
-                device_rule_reference=f.device_rule_reference,
-                remediation=f.remediation,
-                citation_source=f.citation_source,
-                citation_section=f.citation_section,
-                citation_url=f.citation_url,
-                citation_page=f.citation_page,
-                confidence_score=f.confidence_score,
-                llm_raw_response=f.model_dump(),
+            total = len(findings_objs)
+            # Risk weights: Critical (25), High (15), Medium (8), Low (3)
+            penalty = (
+                (sev_counts["CRITICAL"] * 25.0)
+                + (sev_counts["HIGH"] * 15.0)
+                + (sev_counts["MEDIUM"] * 8.0)
+                + (sev_counts["LOW"] * 3.0)
             )
-            db.add(finding_record)
+            score = round(max(0.0, min(100.0, 100.0 - penalty)), 1)
 
-        # Compute final score
-        deductions = (critical_count * 25) + (high_count * 15) + (medium_count * 8) + (low_count * 3)
-        final_score = max(0.0, min(100.0, 100.0 - deductions))
+            job.total_findings = total
+            job.critical_count = sev_counts["CRITICAL"]
+            job.high_count = sev_counts["HIGH"]
+            job.medium_count = sev_counts["MEDIUM"]
+            job.low_count = sev_counts["LOW"]
+            job.compliance_score_percent = score
+            job.status = "COMPLETED"
+            job.completed_at = datetime.now(timezone.utc)
 
-        audit_job.status = "completed"
-        audit_job.completed_at = datetime.now(timezone.utc)
-        audit_job.total_findings = len(all_findings)
-        audit_job.critical_count = critical_count
-        audit_job.high_count = high_count
-        audit_job.medium_count = medium_count
-        audit_job.low_count = low_count
-        audit_job.compliance_score_percent = round(final_score, 1)
+            await db.flush()
 
-        device.status = "audited"
-        await db.commit()
-        logger.info("Audit job completed successfully", audit_job_id=str(audit_job_id), total_findings=len(all_findings))
+            # ── 6. Anchor Audit to Blockchain Ledger ──────────────────────────
+            block = await blockchain_service.anchor_audit(
+                db=db,
+                audit_job_id=job.id,
+                auditor_id="sovereign-auditor-01",
+            )
+            job.blockchain_anchored = True
+            job.blockchain_block_height = block.block_height
+            job.blockchain_block_hash = block.block_hash
+            job.blockchain_merkle_root = block.merkle_root
+
+            await db.flush()
+
+            return AuditCreateResponse(
+                audit_job_id=job.id,
+                status=job.status,
+                message=f"Audit completed and anchored to block #{block.block_height} ({total} findings)",
+                blockchain_anchored=True,
+                block_height=block.block_height,
+                block_hash=block.block_hash,
+            )
+
+        except Exception as e:
+            logger.exception("Audit job execution failed", extra={"job_id": str(job.id), "error": str(e)})
+            job.status = "FAILED"
+            await db.flush()
+            raise
+
+    def _build_remediation_playbook(
+        self,
+        vendor: str,
+        control_id: str,
+        rule_ref: str,
+        raw_remediation: str,
+    ) -> tuple[list[str], str, list[str], str, int]:
+        """Construct vendor-accurate CLI hardening steps, verification, and rollback."""
+        v = vendor.lower()
+
+        # Telnet remediation
+        if "telnet" in rule_ref.lower() or "ac-17" in control_id.lower() or "2.1.1" in control_id:
+            if "fortinet" in v:
+                return (
+                    [
+                        "config system global",
+                        "set admin-telnet disable",
+                        "end",
+                    ],
+                    "get system global | grep admin-telnet",
+                    [
+                        "config system global",
+                        "set admin-telnet enable",
+                        "end",
+                    ],
+                    "LOW",
+                    2,
+                )
+            elif "palo" in v:
+                return (
+                    [
+                        "set deviceconfig system service disable-telnet yes",
+                        "commit",
+                    ],
+                    "show system info | match telnet",
+                    [
+                        "set deviceconfig system service disable-telnet no",
+                        "commit",
+                    ],
+                    "LOW",
+                    3,
+                )
+            elif "juniper" in v:
+                return (
+                    [
+                        "delete system services telnet",
+                        "commit check",
+                        "commit and-quit",
+                    ],
+                    "show system services | match telnet",
+                    [
+                        "set system services telnet",
+                        "commit",
+                    ],
+                    "LOW",
+                    2,
+                )
+            else:  # Cisco default
+                return (
+                    [
+                        "configure terminal",
+                        "line vty 0 15",
+                        "transport input ssh",
+                        "exit",
+                        "no telnet 0.0.0.0 0.0.0.0 outside",
+                        "end",
+                        "write memory",
+                    ],
+                    "show running-config | include transport input",
+                    [
+                        "configure terminal",
+                        "line vty 0 15",
+                        "transport input telnet ssh",
+                        "end",
+                    ],
+                    "LOW",
+                    3,
+                )
+
+        # Wildcard ACE remediation
+        if "permit ip any any" in rule_ref.lower() or "ac-4" in control_id.lower() or "sc-7" in control_id.lower():
+            if "palo" in v:
+                return (
+                    [
+                        "set rulebase security rules OUTSIDE_IN action deny",
+                        "set rulebase security rules OUTSIDE_IN source [ trusted_subnets ]",
+                        "commit",
+                    ],
+                    "show rulebase security rules name OUTSIDE_IN",
+                    [
+                        "set rulebase security rules OUTSIDE_IN action allow",
+                        "commit",
+                    ],
+                    "HIGH",
+                    10,
+                )
+            elif "fortinet" in v:
+                return (
+                    [
+                        "config firewall policy",
+                        "edit 1",
+                        "set srcaddr internal_subnet",
+                        "set dstaddr dmz_servers",
+                        "set service HTTP HTTPS SSH",
+                        "end",
+                    ],
+                    "show firewall policy 1",
+                    [
+                        "config firewall policy",
+                        "edit 1",
+                        "set srcaddr all",
+                        "set dstaddr all",
+                        "set service ALL",
+                        "end",
+                    ],
+                    "HIGH",
+                    10,
+                )
+            elif "juniper" in v:
+                return (
+                    [
+                        "delete security policies from-zone untrust to-zone trust policy ALLOW_ALL",
+                        "set security policies from-zone untrust to-zone trust policy DEFAULT_DENY then deny",
+                        "commit and-quit",
+                    ],
+                    "show security policies from-zone untrust to-zone trust",
+                    [
+                        "set security policies from-zone untrust to-zone trust policy ALLOW_ALL then permit",
+                        "commit",
+                    ],
+                    "HIGH",
+                    8,
+                )
+            else:  # Cisco
+                return (
+                    [
+                        "configure terminal",
+                        "no access-list OUTSIDE_IN extended permit ip any any",
+                        "access-list OUTSIDE_IN extended permit tcp 10.0.0.0 255.0.0.0 host 192.168.1.10 eq 443",
+                        "access-list OUTSIDE_IN extended deny ip any any log",
+                        "end",
+                        "write memory",
+                    ],
+                    "show access-list OUTSIDE_IN",
+                    [
+                        "configure terminal",
+                        "access-list OUTSIDE_IN extended permit ip any any",
+                        "end",
+                    ],
+                    "HIGH",
+                    8,
+                )
+
+        # SNMP community remediation
+        if "snmp" in rule_ref.lower() or "public" in rule_ref.lower():
+            if "fortinet" in v:
+                return (
+                    [
+                        "config system snmp community",
+                        "delete 1",
+                        "end",
+                    ],
+                    "show system snmp community",
+                    [],
+                    "MEDIUM",
+                    2,
+                )
+            elif "juniper" in v:
+                return (
+                    [
+                        "delete snmp community public",
+                        "delete snmp community private",
+                        "commit",
+                    ],
+                    "show snmp",
+                    [],
+                    "MEDIUM",
+                    2,
+                )
+            else:  # Cisco
+                return (
+                    [
+                        "configure terminal",
+                        "no snmp-server community public",
+                        "no snmp-server community private",
+                        "snmp-server group SECURE_GRP v3 priv",
+                        "end",
+                        "write memory",
+                    ],
+                    "show running-config | include snmp-server",
+                    [
+                        "configure terminal",
+                        "snmp-server community public RO",
+                        "end",
+                    ],
+                    "MEDIUM",
+                    3,
+                )
+
+        # Default fallback steps derived from raw remediation
+        steps = [s.strip() for s in raw_remediation.split(".") if s.strip()] if raw_remediation else ["Review and apply vendor hardening guidelines."]
+        return (
+            steps,
+            "show running-config | include " + (rule_ref.split()[0] if rule_ref else "service"),
+            ["Revert changes using previous configuration checkpoint."],
+            "LOW",
+            5,
+        )
 
 
 audit_service = AuditService()

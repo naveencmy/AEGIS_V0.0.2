@@ -1,254 +1,236 @@
-"""LLM Reasoning Engine using llama-cpp-python / local Mistral-7B with Mock Fallback."""
+"""Local LLM service — llama.cpp / Mistral-7B with sovereign mock fallback.
+
+Every answer must be grounded in retrieved controls.
+If MOCK_LLM=true, a deterministic rule-based response is produced instead.
+"""
+
+from __future__ import annotations
 
 import json
-from pathlib import Path
+import logging
+import re
 from typing import Any
-from backend.config import get_settings
-from backend.core.logging import logger
-from backend.prompts import COMPLIANCE_AUDIT_PROMPT, GAP_ANALYSIS_PROMPT, PROMPTS_DIR
-from backend.schemas.audit import AuditResponse, FindingSchema, AuditSummary
-from backend.schemas.framework import SearchResult
-from backend.utils.validators import is_valid_citation_source
 
+from backend.config import get_settings
+from backend.models.framework import FrameworkControl
+
+logger = logging.getLogger(__name__)
 settings = get_settings()
+
+_llm = None  # lazy singleton
+
+
+def _get_llm():
+    global _llm
+    if _llm is not None:
+        return _llm
+    if settings.MOCK_LLM:
+        return None
+    try:
+        from llama_cpp import Llama
+        _llm = Llama(
+            model_path=str(settings.LLM_MODEL_PATH),
+            n_ctx=settings.LLM_N_CTX,
+            n_gpu_layers=settings.LLM_N_GPU_LAYERS,
+            verbose=False,
+        )
+        logger.info("Mistral-7B model loaded", extra={"path": str(settings.LLM_MODEL_PATH)})
+    except Exception as e:
+        logger.warning("LLM unavailable — sovereign rule engine active", extra={"error": str(e)})
+    return _llm
+
+
+# ─── Prompt templates ─────────────────────────────────────────────────────────
+
+QUERY_PROMPT = """<s>[INST] You are AEGIS-NTRO, a sovereign AI compliance auditor. Answer ONLY using the regulatory controls provided below. Every claim must cite a control_id. If the context does not contain sufficient information, say "Insufficient regulatory context available."
+
+REGULATORY CONTEXT:
+{context}
+
+USER QUERY: {query}
+
+Provide a concise, accurate answer with explicit control citations (e.g., "Per NIST AC-4, ..."). [/INST]"""
+
+
+AUDIT_PROMPT = """<s>[INST] You are AEGIS-NTRO. Analyse the device configuration rules below and identify non-compliance violations against the regulatory controls provided. Return ONLY a valid JSON array of finding objects.
+
+REGULATORY CONTROLS:
+{controls_context}
+
+DEVICE CONFIGURATION RULES TO AUDIT:
+{device_rules}
+
+Return JSON array with this exact schema (no other text):
+[
+  {{
+    "control_id": "string",
+    "framework": "string",
+    "severity": "CRITICAL|HIGH|MEDIUM|LOW",
+    "finding_title": "string (max 100 chars)",
+    "finding_description": "string",
+    "device_rule_reference": "string",
+    "remediation": "string",
+    "citation_source": "string",
+    "citation_section": "string",
+    "citation_page": "string or null",
+    "citation_url": "string or null",
+    "confidence_score": 0.0-1.0
+  }}
+]
+[/INST]"""
 
 
 class LLMService:
-    """Sovereign Local LLM wrapper with citation-native reasoning and schema enforcement."""
-
-    def __init__(self) -> None:
-        self.model_path = Path(settings.LLM_MODEL_PATH)
-        self._llm = None
-        self._grammar = None
-        self._load_grammar()
-
-    def _load_grammar(self) -> None:
-        grammar_file = PROMPTS_DIR / "json.gbnf"
-        if grammar_file.exists():
-            try:
-                from llama_cpp import LlamaGrammar
-                self._grammar = LlamaGrammar.from_file(str(grammar_file))
-            except Exception:
-                self._grammar = None
-
-    def _get_llm(self):
-        if settings.MOCK_LLM:
-            return "mock"
-
-        if self._llm is None:
-            if not self.model_path.exists():
-                logger.warn(
-                    "GGUF model file not found at path, activating sovereign mock reasoning fallback",
-                    path=str(self.model_path),
-                )
-                self._llm = "mock"
-                return self._llm
-
-            try:
-                from llama_cpp import Llama
-                self._llm = Llama(
-                    model_path=str(self.model_path),
-                    n_ctx=settings.LLM_CONTEXT_WINDOW,
-                    n_threads=settings.LLM_THREADS,
-                    n_gpu_layers=settings.LLM_GPU_LAYERS,
-                    use_mlock=True,
-                    verbose=False,
-                )
-                logger.info("llama.cpp model loaded successfully", path=str(self.model_path))
-            except Exception as e:
-                logger.error("Failed to load llama.cpp model, reverting to mock engine", error=str(e))
-                self._llm = "mock"
-
-        return self._llm
-
-    async def generate_audit_response(
-        self,
-        vendor: str,
-        device_type: str,
-        hostname: str,
-        parsed_rules: list[dict[str, Any]],
-        retrieved_controls: list[SearchResult],
-    ) -> AuditResponse:
-        """Run LLM reasoning over device rules and retrieved framework controls."""
-        llm = self._get_llm()
-
-        # Format retrieved controls
-        controls_text = "\n\n".join([
-            f"Control ID: {c.control_id} [{c.framework}]\nTitle: {c.title}\nDescription: {c.description}\nGuidance: {c.guidance or 'N/A'}\nSource: {c.framework} (Page {c.source_page or 'N/A'})"
-            for c in retrieved_controls
-        ])
-
-        rules_summary_text = json.dumps(parsed_rules, indent=2)
-
-        prompt = COMPLIANCE_AUDIT_PROMPT.format(
-            vendor=vendor,
-            device_type=device_type,
-            hostname=hostname,
-            parsed_rules=rules_summary_text,
-            retrieved_controls=controls_text,
-        )
-
-        if llm != "mock" and llm is not None:
-            try:
-                messages = [
-                    {"role": "system", "content": "You are AEGIS-NTRO compliance auditor. Output only valid JSON."},
-                    {"role": "user", "content": prompt},
-                ]
-                output = llm.create_chat_completion(
-                    messages=messages,
-                    response_format={"type": "json_object"},
-                    temperature=0.1,
-                    max_tokens=2048,
-                )
-                content = output["choices"][0]["message"]["content"]
-                parsed_json = json.loads(content)
-                audit_response = AuditResponse(**parsed_json)
-                return audit_response
-            except Exception as e:
-                logger.error("Local LLM inference encountered error, generating sovereign evaluated findings", error=str(e))
-
-        # Sovereign deterministic rule evaluator & mock fallback
-        return self._generate_evaluated_fallback_audit(vendor, device_type, parsed_rules, retrieved_controls)
-
-    def _generate_evaluated_fallback_audit(
-        self,
-        vendor: str,
-        device_type: str,
-        parsed_rules: list[dict[str, Any]],
-        retrieved_controls: list[SearchResult],
-    ) -> AuditResponse:
-        """Deterministic evaluation engine ensuring 100% cited, zero-hallucination compliance audit."""
-        findings: list[FindingSchema] = []
-
-        # Find matching controls
-        control_map = {c.control_id: c for c in retrieved_controls}
-
-        for rule in parsed_rules:
-            is_any_any = rule.get("is_any_any", False)
-            details = rule.get("details") or rule.get("name") or str(rule)
-            action = str(rule.get("action", "")).lower()
-
-            # Check for open any-any violation (NIST AC-4 / SC-7, CIS 1.1, ISO A.8.20)
-            if is_any_any or "permit ip any any" in details.lower() or "action accept" in details.lower() and "all" in str(rule):
-                # NIST AC-4 Finding
-                if "AC-4" in control_map or any("AC-4" in c.control_id for c in retrieved_controls):
-                    ctrl = control_map.get("AC-4") or next(c for c in retrieved_controls if "AC-4" in c.control_id)
-                    findings.append(FindingSchema(
-                        control_id=ctrl.control_id,
-                        framework=ctrl.framework,
-                        severity="Critical",
-                        finding_title="Unrestricted Traffic Flow / Any-Any Rule Detected",
-                        finding_description=f"Rule '{details}' permits unrestricted IP traffic between network boundaries without stateful inspection or source validation.",
-                        device_rule_reference=details,
-                        remediation="Replace the permissive 'any any' statement with least-privilege source/destination subnet specifications and restrict to required service ports.",
-                        citation_source="NIST SP 800-53 Rev 5",
-                        citation_section="Section 3.4 AC-4: Information Flow Enforcement",
-                        citation_url=ctrl.source_url or "https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final",
-                        citation_page=ctrl.source_page or 47,
-                        confidence_score=0.98,
-                    ))
-
-                # CIS Controls v8 Finding
-                if "CIS.4.1" in control_map or any("CIS" in c.control_id for c in retrieved_controls):
-                    ctrl = control_map.get("CIS.4.1") or next(c for c in retrieved_controls if "CIS" in c.control_id)
-                    findings.append(FindingSchema(
-                        control_id=ctrl.control_id,
-                        framework=ctrl.framework,
-                        severity="High",
-                        finding_title="Establish and Maintain a Secure Configuration Process for Network Infrastructure",
-                        finding_description=f"Permissive rule '{details}' violates enterprise baseline firewall configuration requirements.",
-                        device_rule_reference=details,
-                        remediation="Apply automated configuration baseline templates and enforce explicit denial default policies.",
-                        citation_source="CIS Controls v8",
-                        citation_section="Control 4.1: Establish and Maintain a Secure Configuration Process",
-                        citation_url=ctrl.source_url or "https://www.cisecurity.org/controls/v8",
-                        citation_page=ctrl.source_page or 22,
-                        confidence_score=0.95,
-                    ))
-
-                # ISO 27001:2022 Finding
-                if "A.8.20" in control_map or any("A.8" in c.control_id for c in retrieved_controls):
-                    ctrl = control_map.get("A.8.20") or next(c for c in retrieved_controls if "A.8" in c.control_id)
-                    findings.append(FindingSchema(
-                        control_id=ctrl.control_id,
-                        framework=ctrl.framework,
-                        severity="High",
-                        finding_title="Network Security - Uncontrolled Information Transfer",
-                        finding_description=f"Rule '{details}' fails to segregate sensitive network perimeters in accordance with ISO 27001:2022 A.8.20 control objectives.",
-                        device_rule_reference=details,
-                        remediation="Implement perimeter zone filtering and mandate authentication proxies for inter-segment routing.",
-                        citation_source="ISO/IEC 27001:2022",
-                        citation_section="Control A.8.20: Network Security",
-                        citation_url=ctrl.source_url or "https://www.iso.org/standard/27001",
-                        citation_page=ctrl.source_page or 18,
-                        confidence_score=0.96,
-                    ))
-
-        # If no specific any-any but controls retrieved, produce evaluated standard analysis
-        if not findings and retrieved_controls:
-            top_ctrl = retrieved_controls[0]
-            findings.append(FindingSchema(
-                control_id=top_ctrl.control_id,
-                framework=top_ctrl.framework,
-                severity=top_ctrl.guidance and "High" or "Medium",
-                finding_title=f"Configuration Review for {top_ctrl.title}",
-                finding_description=f"Device configuration evaluated against {top_ctrl.control_id}: {top_ctrl.description[:200]}.",
-                device_rule_reference=parsed_rules[0].get("details", "Global Config") if parsed_rules else "System Configuration",
-                remediation="Ensure configuration explicitly adheres to stated control parameters.",
-                citation_source=top_ctrl.framework.replace("_", " "),
-                citation_section=f"Requirement {top_ctrl.control_id}",
-                citation_url=top_ctrl.source_url,
-                citation_page=top_ctrl.source_page or 12,
-                confidence_score=0.92,
-            ))
-
-        # Calculate counts
-        critical = sum(1 for f in findings if f.severity == "Critical")
-        high = sum(1 for f in findings if f.severity == "High")
-        medium = sum(1 for f in findings if f.severity == "Medium")
-        low = sum(1 for f in findings if f.severity == "Low")
-        total = len(findings)
-
-        # Calculate compliance score
-        deductions = (critical * 25) + (high * 15) + (medium * 8) + (low * 3)
-        score = max(0.0, min(100.0, 100.0 - deductions))
-
-        return AuditResponse(
-            findings=findings,
-            summary=AuditSummary(
-                total_findings=total,
-                critical_count=critical,
-                high_count=high,
-                medium_count=medium,
-                low_count=low,
-                compliance_score_percent=round(score, 1),
-            ),
-        )
+    """Sovereign local LLM reasoning service."""
 
     async def generate_query_answer(
         self,
         query: str,
-        retrieved_controls: list[SearchResult],
+        retrieved: list[FrameworkControl],
     ) -> tuple[str, float]:
-        """Answer natural language compliance questions with citation references."""
-        if not retrieved_controls:
-            return "No authoritative compliance controls found matching your query in the sovereign knowledge base.", 0.5
+        """Generate a cited compliance answer from retrieved controls."""
+        if not retrieved:
+            return (
+                "**No regulatory context found.** The knowledge base may not contain controls relevant to this query. "
+                "Please ensure the framework data has been ingested.",
+                0.0,
+            )
 
-        top = retrieved_controls[0]
-        answer_parts = [
-            f"Based on **{top.framework.replace('_', ' ')} Control {top.control_id}: {top.title}**:\n",
-            f"{top.description}\n",
-        ]
-        if top.guidance:
-            answer_parts.append(f"**Implementation Guidance:** {top.guidance}\n")
-        
-        answer_parts.append(
-            f"**Authoritative Source:** *{top.framework.replace('_', ' ')}*, Control Reference `{top.control_id}`"
-            + (f", Page {top.source_page}" if top.source_page else "")
-            + (f" ([Official Link]({top.source_url}))" if top.source_url else "")
+        context = self._build_context(retrieved)
+
+        llm = _get_llm()
+        if llm is not None:
+            return await self._llm_answer(llm, query, context, retrieved)
+
+        # Sovereign rule-based fallback
+        return self._rule_based_answer(query, retrieved), 0.92
+
+    async def generate_audit_findings(
+        self,
+        device_rules: list[dict[str, Any]],
+        retrieved_controls: list[FrameworkControl],
+        vendor: str,
+        frameworks: list[str],
+    ) -> list[dict[str, Any]]:
+        """Generate compliance findings for parsed device rules."""
+        if not device_rules:
+            return []
+
+        llm = _get_llm()
+        if llm is not None:
+            return await self._llm_audit(llm, device_rules, retrieved_controls, vendor)
+
+        # Sovereign deterministic fallback
+        return self._deterministic_audit(device_rules, retrieved_controls, vendor, frameworks)
+
+    # ── Private: LLM paths ────────────────────────────────────────────────────
+
+    async def _llm_answer(self, llm, query: str, context: str, retrieved) -> tuple[str, float]:
+        prompt = QUERY_PROMPT.format(context=context[:3000], query=query)
+        try:
+            result = llm(prompt, max_tokens=settings.LLM_MAX_TOKENS, temperature=settings.LLM_TEMPERATURE, echo=False)
+            text   = result["choices"][0]["text"].strip()
+            conf   = min(1.0, len(retrieved) / 5 * 0.9)
+            return text, round(conf, 2)
+        except Exception as e:
+            logger.warning("LLM inference error", extra={"error": str(e)})
+            return self._rule_based_answer(query, retrieved), 0.80
+
+    async def _llm_audit(self, llm, device_rules, controls, vendor) -> list[dict[str, Any]]:
+        controls_ctx = self._build_context(controls)
+        rules_text   = "\n".join(f"- {r['rule_text']} [{r.get('rule_type','')}]" for r in device_rules[:20])
+        prompt = AUDIT_PROMPT.format(controls_context=controls_ctx[:2500], device_rules=rules_text)
+        try:
+            result = llm(prompt, max_tokens=settings.LLM_MAX_TOKENS, temperature=0.0, echo=False)
+            raw    = result["choices"][0]["text"].strip()
+            # Extract JSON from response
+            match  = re.search(r"\[.*\]", raw, re.DOTALL)
+            if match:
+                return json.loads(match.group())
+        except Exception as e:
+            logger.warning("LLM audit error", extra={"error": str(e)})
+        return self._deterministic_audit(device_rules, controls, vendor, [])
+
+    # ── Private: Sovereign rule-based paths ───────────────────────────────────
+
+    def _rule_based_answer(self, query: str, retrieved: list[FrameworkControl]) -> str:
+        """Deterministic answer built from retrieved control text."""
+        lines = ["**Regulatory Analysis (Sovereign Rule Engine)**\n"]
+        for ctrl in retrieved[:4]:
+            lines.append(f"**{ctrl.control_id}** ({ctrl.framework}) — *{ctrl.title}*")
+            lines.append(f"\n{ctrl.description[:400]}")
+            if ctrl.guidance:
+                lines.append(f"\n> **Guidance:** {ctrl.guidance[:300]}")
+            lines.append("\n---")
+        lines.append(
+            "\n*This response is grounded in authoritative regulatory controls "
+            "from the AEGIS-NTRO knowledge base. All claims are citation-backed.*"
         )
+        return "\n".join(lines)
 
-        return "\n".join(answer_parts), 0.96
+    def _deterministic_audit(
+        self,
+        device_rules: list[dict[str, Any]],
+        controls: list[FrameworkControl],
+        vendor: str,
+        frameworks: list[str],
+    ) -> list[dict[str, Any]]:
+        """Map parser-extracted rules to nearest regulatory control via severity hint."""
+        findings = []
+        ctrl_by_sev = {c.severity or "MEDIUM": c for c in controls}
+
+        # Control ID lookup patterns
+        RULE_CONTROL_MAP = {
+            "acl":     ("AC-4",  "Information Flow Enforcement"),
+            "service": ("AC-17", "Remote Access"),
+            "snmp":    ("IA-5",  "Authenticator Management"),
+            "auth":    ("IA-5",  "Authenticator Management"),
+            "crypto":  ("SC-8",  "Transmission Confidentiality and Integrity"),
+            "nat":     ("SC-7",  "Boundary Protection"),
+            "policy":  ("AC-4",  "Information Flow Enforcement"),
+        }
+
+        for rule in device_rules[:15]:  # cap at 15 findings
+            rule_type = rule.get("rule_type", "acl")
+            sev       = rule.get("severity_hint", "MEDIUM")
+            ctrl_id, ctrl_title = RULE_CONTROL_MAP.get(rule_type, ("CM-7", "Least Functionality"))
+
+            # Find matching control in retrieved set
+            matched_ctrl = next(
+                (c for c in controls if c.control_id == ctrl_id),
+                controls[0] if controls else None,
+            )
+
+            framework = matched_ctrl.framework if matched_ctrl else (frameworks[0] if frameworks else "NIST_800_53_R5")
+            citation_src = f"{framework.replace('_', ' ')}"
+
+            findings.append({
+                "control_id":            ctrl_id,
+                "framework":             framework,
+                "severity":              sev,
+                "finding_title":         f"{sev.capitalize()} violation: {rule.get('context', '')[:80]}",
+                "finding_description":   rule.get("context", ""),
+                "device_rule_reference": rule.get("rule_text", "")[:500],
+                "remediation":           matched_ctrl.guidance[:500] if matched_ctrl and matched_ctrl.guidance else
+                                         f"Remediate per {ctrl_id} ({ctrl_title}) requirements.",
+                "citation_source":       citation_src,
+                "citation_section":      f"Control {ctrl_id}",
+                "citation_page":         matched_ctrl.source_page if matched_ctrl else None,
+                "citation_url":          matched_ctrl.source_url if matched_ctrl else None,
+                "confidence_score":      0.88 if matched_ctrl else 0.60,
+            })
+
+        return findings
+
+    def _build_context(self, controls: list[FrameworkControl]) -> str:
+        parts = []
+        for c in controls:
+            parts.append(
+                f"[{c.framework} | {c.control_id}] {c.title}\n"
+                f"{c.description[:350]}"
+                + (f"\nGuidance: {c.guidance[:200]}" if c.guidance else "")
+            )
+        return "\n\n".join(parts)
 
 
 llm_service = LLMService()

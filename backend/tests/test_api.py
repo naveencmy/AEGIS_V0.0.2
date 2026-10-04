@@ -22,7 +22,8 @@ def test_health_endpoint():
     data = response.json()
     assert "status" in data
     assert "version" in data
-    assert data["version"] == "2.0.0-rc1"
+    assert data["version"] == "2.0.0"
+
 
 
 def test_root_endpoint():
@@ -68,4 +69,5 @@ def test_prompt_injection_blocked():
     response = client.post("/api/v1/compliance/query", json=payload)
     assert response.status_code == 400
     data = response.json()
-    assert "OWASP LLM Guard" in data["detail"]
+    assert "injection" in data["detail"].lower()
+

@@ -1,0 +1,79 @@
+{
+  "framework": "PCI_DSS_V4",
+  "name": "PCI DSS v4.0: Payment Card Industry Data Security Standard",
+  "version": "v4.0",
+  "controls": [
+    {
+      "control_id": "PCI-1.2.1",
+      "title": "Network Security Controls - Restrict Inbound and Outbound Traffic",
+      "description": "Restrict inbound and outbound traffic to that which is necessary for the cardholder data environment, and specifically deny all other traffic.",
+      "guidance": "All firewall and router rule sets must implement a deny-all default stance. Rules permitting 'ip any any' or equivalent unrestricted traffic are strictly non-compliant. Each rule must be documented with a business justification.",
+      "severity": "Critical",
+      "source_url": "https://www.pcisecuritystandards.org/document_library/",
+      "source_page": 22
+    },
+    {
+      "control_id": "PCI-1.3.2",
+      "title": "Restrict Inbound Traffic to CDE",
+      "description": "Restrict inbound traffic to system components in the cardholder data environment (CDE) to only that which is necessary.",
+      "guidance": "Ingress filtering on all perimeter devices must be configured so that only explicitly permitted services reach the CDE. Management plane access (SSH, HTTPS) must be restricted to dedicated administrative subnets.",
+      "severity": "Critical",
+      "source_url": "https://www.pcisecuritystandards.org/document_library/",
+      "source_page": 25
+    },
+    {
+      "control_id": "PCI-2.2.1",
+      "title": "Configuration Standards - System Hardening",
+      "description": "Develop configuration standards for all system components. Assure that these standards address all known security vulnerabilities and are consistent with industry-accepted system hardening standards.",
+      "guidance": "Default credentials must be changed on all network devices. SNMP community strings 'public' and 'private' are prohibited. Unused services and ports must be disabled.",
+      "severity": "High",
+      "source_url": "https://www.pcisecuritystandards.org/document_library/",
+      "source_page": 35
+    },
+    {
+      "control_id": "PCI-2.2.7",
+      "title": "Encrypt All Non-Console Administrative Access",
+      "description": "All non-console administrative access is encrypted using strong cryptography.",
+      "guidance": "Telnet, rlogin, rsh, and HTTP-based management must be disabled. Only SSH v2 and HTTPS with TLS 1.2+ are permitted for device management access.",
+      "severity": "High",
+      "source_url": "https://www.pcisecuritystandards.org/document_library/",
+      "source_page": 38
+    },
+    {
+      "control_id": "PCI-6.3.3",
+      "title": "Security Patches and Updates",
+      "description": "All system components are protected from known vulnerabilities by installing applicable security patches/updates.",
+      "guidance": "Critical security patches must be applied within one month of release. Vendor-recommended firmware and software versions should be tracked for all network devices.",
+      "severity": "Medium",
+      "source_url": "https://www.pcisecuritystandards.org/document_library/",
+      "source_page": 62
+    },
+    {
+      "control_id": "PCI-8.2.1",
+      "title": "Strong Authentication for Users and Administrators",
+      "description": "All user IDs and authentication credentials for non-consumer users are managed according to access control policy.",
+      "guidance": "Local user accounts with default passwords must be removed or disabled. Password complexity and minimum length requirements must be enforced on all network device user accounts.",
+      "severity": "High",
+      "source_url": "https://www.pcisecuritystandards.org/document_library/",
+      "source_page": 75
+    },
+    {
+      "control_id": "PCI-10.2.1",
+      "title": "Audit Log Generation",
+      "description": "Audit logs capture all individual user access to cardholder data and all actions by any individual with root or administrative privileges.",
+      "guidance": "Logging must be enabled on all network devices. Syslog must be forwarded to a central log server. Login/logout events, configuration changes, and privilege escalation must all be captured.",
+      "severity": "High",
+      "source_url": "https://www.pcisecuritystandards.org/document_library/",
+      "source_page": 92
+    },
+    {
+      "control_id": "PCI-10.5.1",
+      "title": "Retain Audit Logs for at Least 12 Months",
+      "description": "Retain audit log history for at least 12 months, with at least the most recent three months available for immediate analysis.",
+      "guidance": "Logging infrastructure must have sufficient capacity and retention policy configured. Logs must be stored on a separate, protected server with integrity controls.",
+      "severity": "Medium",
+      "source_url": "https://www.pcisecuritystandards.org/document_library/",
+      "source_page": 96
+    }
+  ]
+}

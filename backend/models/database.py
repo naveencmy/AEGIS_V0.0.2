@@ -1,85 +1,48 @@
-"""Database connection, engine, and session management using SQLAlchemy 2.0 async."""
+"""Async database engine, session factory, and table initialisation."""
 
-from typing import AsyncGenerator
-from sqlalchemy.ext.asyncio import (
-    AsyncEngine,
-    AsyncSession,
-    async_sessionmaker,
-    create_async_engine,
-)
-from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+
 from backend.config import get_settings
 from backend.models.base import Base
+
+# Import all models so metadata is populated before create_all
+from backend.models.device import DeviceConfig  # noqa: F401
+from backend.models.audit import AuditJob, AuditFinding  # noqa: F401
+from backend.models.framework import FrameworkControl  # noqa: F401
+from backend.models.blockchain import BlockchainBlock  # noqa: F401
 
 settings = get_settings()
 
 engine: AsyncEngine = create_async_engine(
     settings.DATABASE_URL,
-    echo=settings.DEBUG and settings.APP_ENV == "development",
-    pool_size=settings.DB_POOL_MIN_SIZE,
-    max_overflow=settings.DB_POOL_MAX_SIZE - settings.DB_POOL_MIN_SIZE,
-    pool_timeout=settings.DB_POOL_TIMEOUT,
+    echo=settings.DEBUG,
+    pool_size=10,
+    max_overflow=20,
+    pool_timeout=30,
     pool_pre_ping=True,
 )
 
-AsyncSessionLocal = async_sessionmaker(
+AsyncSessionLocal: async_sessionmaker[AsyncSession] = async_sessionmaker(
     bind=engine,
     class_=AsyncSession,
     expire_on_commit=False,
-    autocommit=False,
     autoflush=False,
+    autocommit=False,
 )
 
 
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    """Dependency that yields an async database session."""
-    async with AsyncSessionLocal() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
-        finally:
-            await session.close()
-
-
 async def init_db() -> None:
-    """Initialize database extensions and create tables if they do not exist."""
+    """Create pgvector extension and all tables if not exists."""
     async with engine.begin() as conn:
-        # Create necessary PostgreSQL extensions
-        await conn.execute(text('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";'))
-        await conn.execute(text('CREATE EXTENSION IF NOT EXISTS "vector";'))
-        await conn.execute(text('CREATE EXTENSION IF NOT EXISTS "pg_trgm";'))
-        await conn.execute(text('CREATE EXTENSION IF NOT EXISTS "unaccent";'))
-        
-        # Create trigger function for automatic TSVector generation
-        await conn.execute(text("""
-            CREATE OR REPLACE FUNCTION update_framework_tsv()
-            RETURNS TRIGGER AS $$
-            BEGIN
-              NEW.tsv := 
-                setweight(to_tsvector('english', COALESCE(NEW.title, '')), 'A') ||
-                setweight(to_tsvector('english', COALESCE(NEW.description, '')), 'B') ||
-                setweight(to_tsvector('english', COALESCE(NEW.guidance, '')), 'C');
-              RETURN NEW;
-            END;
-            $$ LANGUAGE plpgsql;
-        """))
-        
-        # Create all tables
+        await conn.execute(__import__("sqlalchemy").text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.create_all)
-        
-        # Create triggers if not already present
-        await conn.execute(text("""
-            DO $$
-            BEGIN
-                IF NOT EXISTS (
-                    SELECT 1 FROM pg_trigger WHERE tgname = 'trg_framework_tsv_update'
-                ) THEN
-                    CREATE TRIGGER trg_framework_tsv_update
-                    BEFORE INSERT OR UPDATE ON framework_controls
-                    FOR EACH ROW EXECUTE FUNCTION update_framework_tsv();
-                END IF;
-            END $$;
-        """))
+
+
+async def get_session() -> AsyncSession:  # pragma: no cover
+    async with AsyncSessionLocal() as session:
+        yield session
+
+
+# Alias for compatibility with tests and routers
+get_db = get_session
+

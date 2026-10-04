@@ -1,372 +1,201 @@
 """
-IP-SAKTI Sahayak — Mock Responses for Demo Mode
-5 pre-cached, citation-rich responses for guaranteed demo stability.
-When DEMO_MODE=true or LLM fails/times out, these are returned.
+AEGIS-NTRO — Sovereign Mock Responses for Demo / Fallback Mode.
+Pre-cached, citation-rich network compliance responses for offline / air-gapped demo stability.
+Covers Cisco IOS/ASA, Palo Alto PAN-OS, Fortinet FortiOS, Juniper JunOS vs
+NIST SP 800-53 Rev 5, CIS Controls v8, ISO 27001:2022, and PCI-DSS v4.0.
 """
 
+from typing import Any, Optional
 
-DEMO_RESPONSES: dict[str, dict] = {
-
-    # ── Demo Query 1 ─────────────────────────────────────────────
-    "Can I patent a traditional Ayurvedic formulation?": {
+DEMO_RESPONSES: dict[str, dict[str, Any]] = {
+    # ── Demo Query 1: Unrestricted ACLs & Boundary Protection ────────────
+    "What are the mandatory requirements for boundary protection and default-deny under NIST SC-7?": {
         "answer": (
-            "Under Indian law, traditional Ayurvedic formulations face significant "
-            "patentability challenges. **Section 3(p) of the Patents Act, 1970** "
-            "explicitly excludes from patentability 'an invention which, in effect, "
-            "is traditional knowledge or which is an aggregation or duplication of "
-            "known properties of traditionally known component or components' "
-            "[Patents Act 1970, Section 3(p), p.12].\n\n"
-            "Furthermore, **Section 3(d)** bars patents on mere 'new forms' of known "
-            "substances unless they demonstrate significantly enhanced efficacy "
-            "[Patents Act 1970, Section 3(d), p.10].\n\n"
-            "However, a **novel process** for preparing a traditional formulation, or a "
-            "**novel synergistic composition** with demonstrated enhanced therapeutic "
-            "efficacy backed by clinical data, may be patentable if it is not documented "
-            "in the **Traditional Knowledge Digital Library (TKDL)**.\n\n"
-            "The TKDL currently contains over 3,50,000 formulations from 150 books of "
-            "Indian Systems of Medicine and is used as prior art by patent offices "
-            "worldwide to prevent bio-piracy [TKDL Access Guidelines, Section 2.1, p.5].\n\n"
-            "At the international level, **Article 27.3(b) of TRIPS** permits member "
-            "states to exclude plants and essentially biological processes from "
-            "patentability, which India has exercised [TRIPS Agreement, Article 27.3(b), p.331]."
+            "Under **NIST SP 800-53 Rev. 5 Control SC-7 (Boundary Protection)**, the information system must "
+            "monitor and control communications at external boundary and key internal boundaries. "
+            "Specifically, **SC-7(5) (Deny by Default / Allow by Exception)** mandates that network security appliances "
+            "deny network communications traffic by default and allow traffic only by explicit exception "
+            "[NIST SP 800-53 Rev. 5, Control SC-7(5), p.312].\n\n"
+            "Key architectural mandates include:\n"
+            "1. **Default-Deny Posture**: All ingress and egress traffic at network boundaries must terminate on a default "
+            "implicit or explicit deny rule (`deny ip any any log`). Overly permissive rules such as `permit ip any any` "
+            "strictly violate SC-7(5) and AC-4 [NIST SP 800-53 Rev. 5, Control AC-4, p.47].\n"
+            "2. **Demarcation of Managed Interfaces**: Managed interfaces connecting to untrusted networks must route traffic "
+            "through dedicated security gateways or stateful inspection filters with cryptographic isolation [NIST SP 800-53 Rev. 5, Control SC-7(7), p.314].\n"
+            "3. **Stateful Inspection & Flow Enforcement**: Inter-zone routing between trust tiers (e.g., DMZ to Internal LAN) "
+            "must enforce unidirectional state synchronization and validate layer-4 to layer-7 protocol compliance."
         ),
         "citations": [
             {
-                "source_title": "Patents Act, 1970",
-                "section": "3(p)",
-                "page": 12,
-                "authority": "IP India",
-                "regime": "national",
-                "relevance_score": 0.95,
-                "chunk_id": "demo-patents-3p",
-                "full_text": "Section 3(p): An invention which, in effect, is traditional knowledge or which is an aggregation or duplication of known properties of traditionally known component or components."
+                "source_title": "NIST SP 800-53 Rev. 5",
+                "section": "SC-7 (Boundary Protection)",
+                "page": "312",
+                "authority": "NIST",
+                "regime": "Federal / Defense",
+                "relevance_score": 0.98,
+                "chunk_id": "nist-sc-7",
+                "full_text": "Control SC-7(5): The information system denies network communications traffic by default and allows network communications traffic by exception for designated boundaries."
             },
             {
-                "source_title": "Patents Act, 1970",
-                "section": "3(d)",
-                "page": 10,
-                "authority": "IP India",
-                "regime": "national",
-                "relevance_score": 0.91,
-                "chunk_id": "demo-patents-3d",
-                "full_text": "Section 3(d): The mere discovery of a new form of a known substance which does not result in the enhancement of the known efficacy of that substance or the mere discovery of any new property or new use for a known substance or of the mere use of a known process, machine or apparatus unless such known process results in a new product or employs at least one new reactant."
-            },
-            {
-                "source_title": "TKDL Access Guidelines",
-                "section": "2.1",
-                "page": 5,
-                "authority": "CSIR",
-                "regime": "national",
-                "relevance_score": 0.88,
-                "chunk_id": "demo-tkdl-2-1",
-                "full_text": "The Traditional Knowledge Digital Library (TKDL) is a pioneering initiative of India to prevent misappropriation of traditional knowledge at International Patent Offices."
-            },
-            {
-                "source_title": "TRIPS Agreement (WTO)",
-                "section": "Article 27.3(b)",
-                "page": 331,
-                "authority": "WTO",
-                "regime": "international",
-                "relevance_score": 0.82,
-                "chunk_id": "demo-trips-27-3b",
-                "full_text": "Members may also exclude from patentability: plants and animals other than micro-organisms, and essentially biological processes for the production of plants or animals."
-            }
-        ],
-        "regime_tags": ["national", "international"],
-        "confidence": "high",
-        "language_detected": "en"
-    },
-
-    # ── Demo Query 2 ─────────────────────────────────────────────
-    "What are GMP requirements for AYUSH manufacturing units?": {
-        "answer": (
-            "AYUSH manufacturing units in India must comply with **Good Manufacturing "
-            "Practices (GMP)** as specified in **Schedule T of the Drugs and Cosmetics "
-            "Act, 1940** and the detailed guidelines issued by the Ministry of Ayush.\n\n"
-            "Key GMP requirements include:\n\n"
-            "1. **Premises and Plant**: Manufacturing premises must be located in hygienic "
-            "surroundings with adequate space for raw material storage, manufacturing, "
-            "quality control laboratory, and finished goods storage "
-            "[Ministry of Ayush GMP Guidelines, Section 3.1, p.8].\n\n"
-            "2. **Quality Control**: Every manufacturer must have a Quality Control "
-            "department headed by a qualified person with expertise in Ayurveda/Siddha/Unani "
-            "pharmacopoeia [Ministry of Ayush GMP Guidelines, Section 4.2, p.15].\n\n"
-            "3. **Raw Material Testing**: All raw materials (herbs, minerals, metals) must be "
-            "authenticated and tested for identity, purity, and quality before use. "
-            "Heavy metal limits are specified per the Ayurvedic Pharmacopoeia of India (API) "
-            "[D&C Act Schedule E, Rule 161-B, p.22].\n\n"
-            "4. **Documentation**: Batch manufacturing records, analytical records, and "
-            "distribution records must be maintained for at least 5 years "
-            "[Ministry of Ayush GMP Guidelines, Section 6.1, p.28].\n\n"
-            "5. **Stability Studies**: Products must undergo stability studies per API "
-            "guidelines to establish shelf life [Ministry of Ayush GMP Guidelines, Section 7.3, p.34]."
-        ),
-        "citations": [
-            {
-                "source_title": "Ministry of Ayush GMP Guidelines for ASU Drugs",
-                "section": "3.1",
-                "page": 8,
-                "authority": "Ministry of Ayush",
-                "regime": "national",
+                "source_title": "NIST SP 800-53 Rev. 5",
+                "section": "AC-4 (Information Flow Enforcement)",
+                "page": "47",
+                "authority": "NIST",
+                "regime": "Federal / Defense",
                 "relevance_score": 0.94,
-                "chunk_id": "demo-gmp-3-1",
-                "full_text": "Section 3.1 Premises and Plant: The manufacturing premises shall be located in hygienic surroundings with adequate space and shall be designed to ensure proper flow of materials and personnel."
+                "chunk_id": "nist-ac-4",
+                "full_text": "Control AC-4: The information system enforces approved authorizations for controlling the flow of information within the system and between connected systems."
             },
             {
-                "source_title": "Ministry of Ayush GMP Guidelines for ASU Drugs",
-                "section": "4.2",
-                "page": 15,
-                "authority": "Ministry of Ayush",
-                "regime": "national",
-                "relevance_score": 0.91,
-                "chunk_id": "demo-gmp-4-2",
-                "full_text": "Section 4.2 Quality Control Department: Every manufacturer shall have a Quality Control department which shall be independent of the production department and headed by a qualified person."
-            },
-            {
-                "source_title": "Drugs and Cosmetics Act, 1940 — Schedule E",
-                "section": "Rule 161-B",
-                "page": 22,
-                "authority": "CDSCO",
-                "regime": "national",
-                "relevance_score": 0.87,
-                "chunk_id": "demo-dca-161b",
-                "full_text": "Rule 161-B: Standards for Ayurvedic, Siddha and Unani drugs. Every drug shall conform to the standards of identity, purity and quality as prescribed in the Ayurvedic Pharmacopoeia of India."
-            }
-        ],
-        "regime_tags": ["national"],
-        "confidence": "high",
-        "language_detected": "en"
-    },
-
-    # ── Demo Query 3 ─────────────────────────────────────────────
-    "How do I register an Ayurvedic drug for export to the EU?": {
-        "answer": (
-            "Exporting Ayurvedic drugs to the EU involves compliance with both Indian "
-            "export regulations and EU regulatory requirements:\n\n"
-            "**Indian Side:**\n"
-            "1. Obtain a valid **Drug Manufacturing License** from the State Licensing "
-            "Authority under the Drugs and Cosmetics Act, 1940 "
-            "[D&C Act, Section 25, p.18].\n\n"
-            "2. Ensure GMP compliance as per **Schedule T** and obtain a **GMP Certificate** "
-            "from the licensing authority [Ministry of Ayush GMP Guidelines, Section 1.2, p.3].\n\n"
-            "3. Obtain an **Export Registration Certificate** from the Ministry of Ayush. "
-            "The application must include product dossier, stability data, and certificate "
-            "of analysis [Ministry of Ayush Export Guidelines, Circular 2023/04, p.2].\n\n"
-            "4. Register with **APEDA** (Agricultural and Processed Food Products Export "
-            "Development Authority) if the product is classified as a food supplement "
-            "[Ministry of Ayush Export Guidelines, Annexure-III, p.12].\n\n"
-            "**EU Side:**\n"
-            "5. Ayurvedic products are classified as **Traditional Herbal Medicinal Products** "
-            "under **EU Directive 2004/24/EC**. Registration requires proof of at least "
-            "30 years of traditional use, including 15 years within the EU "
-            "[WIPO Traditional Knowledge Documentation, Section 4.5, p.67].\n\n"
-            "6. Alternatively, products may be marketed as **food supplements** under "
-            "EU Regulation 1924/2006, but therapeutic claims are prohibited "
-            "[Ministry of Ayush Export Guidelines, Section 5.2, p.8]."
-        ),
-        "citations": [
-            {
-                "source_title": "Drugs and Cosmetics Act, 1940",
-                "section": "Section 25",
-                "page": 18,
-                "authority": "CDSCO",
-                "regime": "national",
+                "source_title": "CIS Controls v8",
+                "section": "Control 4.4 (Firewall Architecture)",
+                "page": "28",
+                "authority": "Center for Internet Security",
+                "regime": "Industry Standard",
                 "relevance_score": 0.90,
-                "chunk_id": "demo-dca-25",
-                "full_text": "Section 25: Power to prohibit manufacture, etc., of drug and cosmetic in public interest."
-            },
-            {
-                "source_title": "Ministry of Ayush Export Guidelines",
-                "section": "Circular 2023/04",
-                "page": 2,
-                "authority": "Ministry of Ayush",
-                "regime": "national",
-                "relevance_score": 0.93,
-                "chunk_id": "demo-export-circ",
-                "full_text": "Exporters of ASU drugs shall apply for an Export Registration Certificate along with the product dossier including composition, manufacturing process, quality control specifications, and stability data."
-            },
-            {
-                "source_title": "WIPO Traditional Knowledge Documentation",
-                "section": "4.5",
-                "page": 67,
-                "authority": "WIPO",
-                "regime": "international",
-                "relevance_score": 0.85,
-                "chunk_id": "demo-wipo-4-5",
-                "full_text": "Traditional herbal medicinal products may be registered under simplified procedures in the EU if evidence of at least 30 years of safe traditional use, including 15 years within the European Community, is provided."
+                "chunk_id": "cis-4-4",
+                "full_text": "Safeguard 4.4: Enforce automatic default-deny access control policies at all enterprise network ingress and egress points."
             }
         ],
-        "regime_tags": ["national", "international"],
+        "regime_tags": ["NIST_800_53_R5", "CIS_v8"],
         "confidence": "high",
         "language_detected": "en"
     },
 
-    # ── Demo Query 4 ─────────────────────────────────────────────
-    "What is TKDL and how does it affect patentability?": {
+    # ── Demo Query 2: Remote Access & Insecure Protocols ─────────────────
+    "Why is Telnet prohibited and what are the SSH requirements under CIS Controls and NIST AC-17?": {
         "answer": (
-            "The **Traditional Knowledge Digital Library (TKDL)** is a pioneering Indian "
-            "digital repository that documents traditional knowledge from Indian systems "
-            "of medicine in patent-compatible format.\n\n"
-            "**Purpose and Scope:**\n"
-            "TKDL was established by CSIR in partnership with the Ministry of Ayush to "
-            "prevent misappropriation (bio-piracy) of India's traditional knowledge at "
-            "international patent offices. It contains over **3,50,000 formulations** "
-            "from 150 books of Ayurveda, Unani, Siddha, and Yoga "
-            "[TKDL Access Guidelines, Section 1.1, p.2].\n\n"
-            "**How TKDL Affects Patentability:**\n\n"
-            "1. **Prior Art Evidence**: TKDL serves as citable prior art. If a patent "
-            "application claims a formulation documented in TKDL, the patent can be "
-            "rejected or revoked under **Section 25(1)(k)** or **Section 64(1)(q)** "
-            "of the Patents Act, 1970 [Patents Act 1970, Section 25(1)(k), p.45].\n\n"
-            "2. **International Access**: TKDL has access agreements with the **EPO** "
-            "(European Patent Office), **USPTO**, **JPO**, **UKIPO**, and other major "
-            "patent offices. Examiners search TKDL during prior art examination "
-            "[TKDL Access Guidelines, Section 3.2, p.9].\n\n"
-            "3. **Patent Revocations**: TKDL evidence has led to revocation/withdrawal "
-            "of over **200 patent applications** worldwide, including the famous turmeric "
-            "and neem patents [TKDL Access Guidelines, Section 5.1, p.14].\n\n"
-            "4. **Article 29 of TRIPS** requires patent applicants to disclose prior art, "
-            "and TKDL provides a structured, searchable database for this purpose "
-            "[TRIPS Agreement, Article 29, p.335]."
+            "Cleartext management protocols such as **Telnet (TCP port 23)** and **HTTP (TCP port 80)** transmit administrative "
+            "credentials and configuration payloads in unencrypted plaintext, exposing sessions to eavesdropping, replay, and "
+            "man-in-the-middle (MITM) credential harvesting [NIST SP 800-53 Rev. 5, Control IA-5, p.142].\n\n"
+            "Under **CIS Controls v8 Safeguard 4.1** and **NIST SP 800-53 Control AC-17 (Remote Access)**:\n"
+            "1. **Prohibit Insecure Management**: Cleartext protocols must be disabled globally across all administrative "
+            "interfaces (`no telnet server`, `transport input ssh`, or `set admin-telnet disable`) [CIS Controls v8, Control 4.1, p.26].\n"
+            "2. **Enforce SSHv2 with Strong Ciphers**: Remote interactive sessions must strictly require **SSH Version 2** "
+            "using FIPS 140-3 validated cryptographic ciphers (AES-GCM, ChaCha20-Poly1305) and SHA-2/SHA-3 hashing [NIST SP 800-53 Rev. 5, Control SC-13, p.328].\n"
+            "3. **Access Control Lists on VTY Lines**: Interactive management must be constrained to designated bastion / jump "
+            "hosts via source-filtered access lists [CIS Cisco IOS Benchmark v4.0, Section 1.2.2, p.18]."
         ),
         "citations": [
             {
-                "source_title": "TKDL Access Guidelines",
-                "section": "1.1",
-                "page": 2,
-                "authority": "CSIR",
-                "regime": "national",
+                "source_title": "CIS Controls v8",
+                "section": "Safeguard 4.1 (Secure Network Infrastructure)",
+                "page": "26",
+                "authority": "CIS",
+                "regime": "Industry Standard",
                 "relevance_score": 0.96,
-                "chunk_id": "demo-tkdl-1-1",
-                "full_text": "The Traditional Knowledge Digital Library (TKDL) is a pioneering initiative to digitize and document traditional knowledge existing in India in languages and format understandable by patent examiners at the International Patent Offices."
+                "chunk_id": "cis-4-1",
+                "full_text": "Safeguard 4.1: Ensure network infrastructure devices are administered using secure, encrypted protocols (SSHv2, HTTPS, TLS 1.3) with cleartext management strictly disabled."
             },
             {
-                "source_title": "Patents Act, 1970",
-                "section": "25(1)(k)",
-                "page": 45,
-                "authority": "IP India",
-                "regime": "national",
-                "relevance_score": 0.92,
-                "chunk_id": "demo-patents-25-1-k",
-                "full_text": "Section 25(1)(k): Opposition to grant of patent on the ground that the invention so far as claimed in any claim of the complete specification is anticipated having regard to the knowledge, oral or otherwise, available within any local or indigenous community in India or elsewhere."
+                "source_title": "NIST SP 800-53 Rev. 5",
+                "section": "AC-17 (Remote Access)",
+                "page": "82",
+                "authority": "NIST",
+                "regime": "Federal / Defense",
+                "relevance_score": 0.93,
+                "chunk_id": "nist-ac-17",
+                "full_text": "Control AC-17(2): The information system enforces cryptographic protection for remote access sessions using strong encryption mechanisms."
             },
             {
-                "source_title": "TKDL Access Guidelines",
-                "section": "3.2",
-                "page": 9,
-                "authority": "CSIR",
-                "regime": "national",
+                "source_title": "PCI-DSS v4.0",
+                "section": "Requirement 2.2.7",
+                "page": "64",
+                "authority": "PCI SSC",
+                "regime": "Payment Card Industry",
                 "relevance_score": 0.89,
-                "chunk_id": "demo-tkdl-3-2",
-                "full_text": "TKDL has signed access agreements with nine international patent offices including EPO, USPTO, JPO, UKIPO, IP Australia, CIPO, DPMA, and Rospatent for use during patent examination."
-            },
-            {
-                "source_title": "TRIPS Agreement (WTO)",
-                "section": "Article 29",
-                "page": 335,
-                "authority": "WTO",
-                "regime": "international",
-                "relevance_score": 0.84,
-                "chunk_id": "demo-trips-29",
-                "full_text": "Article 29: Conditions on Patent Applicants — Members shall require that an applicant for a patent shall disclose the invention in a manner sufficiently clear and complete for the invention to be carried out by a person skilled in the art."
+                "chunk_id": "pci-2-2-7",
+                "full_text": "Requirement 2.2.7: All non-console administrative access must be encrypted using strong cryptography."
             }
         ],
-        "regime_tags": ["national", "international"],
+        "regime_tags": ["CIS_v8", "NIST_800_53_R5", "PCI_DSS_4.0"],
         "confidence": "high",
         "language_detected": "en"
     },
 
-    # ── Demo Query 5 ─────────────────────────────────────────────
-    "Explain Section 3(d) of Patents Act with examples.": {
+    # ── Demo Query 3: SNMP Hardening & Credentials ──────────────────────
+    "What are the compliance requirements for SNMP community strings and SNMPv3?": {
         "answer": (
-            "**Section 3(d) of the Patents Act, 1970** is one of the most significant "
-            "provisions affecting pharmaceutical and Ayurvedic drug patenting in India.\n\n"
-            "**Text of Section 3(d):**\n"
-            "> *\"The mere discovery of a new form of a known substance which does not "
-            "result in the enhancement of the known efficacy of that substance or the "
-            "mere discovery of any new property or new use for a known substance or of "
-            "the mere use of a known process, machine or apparatus unless such known "
-            "process results in a new product or employs at least one new reactant.\"* "
-            "[Patents Act 1970, Section 3(d), p.10]\n\n"
-            "**Explanation (from the Act):**\n"
-            "For the purposes of this clause, salts, esters, ethers, polymorphs, metabolites, "
-            "pure form, particle size, isomers, mixtures of isomers, complexes, combinations "
-            "and other derivatives of known substance shall be considered to be the same "
-            "substance, unless they differ significantly in properties with regard to efficacy "
-            "[Patents Act 1970, Section 3(d) Explanation, p.10].\n\n"
-            "**Landmark Examples:**\n\n"
-            "1. **Novartis v. Union of India (2013)**: The Supreme Court upheld rejection of "
-            "the patent for Gleevec (imatinib mesylate beta-crystalline form), ruling it was "
-            "a new form of a known substance without enhanced efficacy. This is the definitive "
-            "interpretation of Section 3(d) [Patents Act 1970, Section 3(d), p.10].\n\n"
-            "2. **Ayurvedic Context**: A manufacturer seeking to patent a traditional "
-            "Ashwagandha (Withania somnifera) formulation in nano-encapsulated form would "
-            "need to demonstrate that the new form shows **significantly enhanced therapeutic "
-            "efficacy** over the traditional form, not merely improved bioavailability "
-            "[Patents Act 1970, Section 3(d), p.10].\n\n"
-            "3. **Relationship with Section 3(p)**: For Ayurvedic formulations, Section 3(d) "
-            "works in conjunction with **Section 3(p)** which excludes traditional knowledge. "
-            "Even if enhanced efficacy is shown, the formulation must not be documented in "
-            "TKDL as prior art [Patents Act 1970, Section 3(p), p.12]."
+            "SNMP versions 1 and 2c communicate community strings in cleartext and lack cryptographic message authentication. "
+            "Using default community strings such as `public` or `private` allows unauthenticated adversaries to extract device routing "
+            "tables, interface IP schemes, and cryptographic parameters [NIST SP 800-53 Rev. 5, Control IA-5, p.145].\n\n"
+            "Under **NIST SP 800-53 Control SC-8** and **CIS Benchmarks**:\n"
+            "1. **Eliminate SNMPv1/v2c**: Legacy SNMP daemons must be removed from production infrastructure.\n"
+            "2. **Mandate SNMPv3 with authPriv**: SNMPv3 must be configured with both authentication (SHA-256 or SHA-512) and "
+            "privacy encryption (AES-128 or AES-256) [CIS Cisco IOS Benchmark, Section 2.4.1, p.38].\n"
+            "3. **Remove Default Communities**: Any occurrence of `snmp-server community public` or `private` must be deleted "
+            "immediately as a CRITICAL severity finding [PCI-DSS v4.0, Requirement 2.1, p.58]."
         ),
         "citations": [
             {
-                "source_title": "Patents Act, 1970",
-                "section": "3(d)",
-                "page": 10,
-                "authority": "IP India",
-                "regime": "national",
-                "relevance_score": 0.97,
-                "chunk_id": "demo-patents-3d-detail",
-                "full_text": "Section 3(d): The mere discovery of a new form of a known substance which does not result in the enhancement of the known efficacy of that substance or the mere discovery of any new property or new use for a known substance or of the mere use of a known process, machine or apparatus unless such known process results in a new product or employs at least one new reactant. Explanation.—For the purposes of this clause, salts, esters, ethers, polymorphs, metabolites, pure form, particle size, isomers, mixtures of isomers, complexes, combinations and other derivatives of known substance shall be considered to be the same substance, unless they differ significantly in properties with regard to efficacy."
+                "source_title": "NIST SP 800-53 Rev. 5",
+                "section": "SC-8 (Transmission Confidentiality and Integrity)",
+                "page": "315",
+                "authority": "NIST",
+                "regime": "Federal / Defense",
+                "relevance_score": 0.95,
+                "chunk_id": "nist-sc-8",
+                "full_text": "Control SC-8: Protect the integrity and confidentiality of transmitted administrative and telemetry information."
             },
             {
-                "source_title": "Patents Act, 1970",
-                "section": "3(p)",
-                "page": 12,
-                "authority": "IP India",
-                "regime": "national",
-                "relevance_score": 0.90,
-                "chunk_id": "demo-patents-3p-ref",
-                "full_text": "Section 3(p): An invention which, in effect, is traditional knowledge or which is an aggregation or duplication of known properties of traditionally known component or components."
+                "source_title": "PCI-DSS v4.0",
+                "section": "Requirement 2.1",
+                "page": "58",
+                "authority": "PCI SSC",
+                "regime": "Payment Card Industry",
+                "relevance_score": 0.92,
+                "chunk_id": "pci-2-1",
+                "full_text": "Requirement 2.1: Always change vendor-supplied defaults and remove or disable unnecessary default accounts, passwords, and SNMP community strings."
             }
         ],
-        "regime_tags": ["national"],
+        "regime_tags": ["NIST_800_53_R5", "PCI_DSS_4.0", "CIS_v8"],
         "confidence": "high",
         "language_detected": "en"
-    },
+    }
 }
 
 
-def get_mock_response(query: str) -> dict | None:
-    """
-    Fuzzy-match a query against pre-cached demo responses.
-    Returns None if no match found.
-    """
-    query_lower = query.strip().lower().rstrip("?").rstrip(".")
+def get_mock_response(query: str) -> Optional[dict[str, Any]]:
+    """Retrieve pre-cached mock response if query matches closely, or return generic sovereign answer."""
+    query_clean = query.strip().lower()
 
-    for demo_query, response in DEMO_RESPONSES.items():
-        demo_lower = demo_query.strip().lower().rstrip("?").rstrip(".")
-        if demo_lower == query_lower:
-            return response
+    # Exact or substring match
+    for key, data in DEMO_RESPONSES.items():
+        if key.lower() in query_clean or query_clean in key.lower():
+            return data
 
-    # Keyword-based partial matching
-    keyword_map = {
-        "patent": "Can I patent a traditional Ayurvedic formulation?",
-        "traditional": "Can I patent a traditional Ayurvedic formulation?",
-        "gmp": "What are GMP requirements for AYUSH manufacturing units?",
-        "manufacturing": "What are GMP requirements for AYUSH manufacturing units?",
-        "export": "How do I register an Ayurvedic drug for export to the EU?",
-        "eu": "How do I register an Ayurvedic drug for export to the EU?",
-        "tkdl": "What is TKDL and how does it affect patentability?",
-        "traditional knowledge digital": "What is TKDL and how does it affect patentability?",
-        "3(d)": "Explain Section 3(d) of Patents Act with examples.",
-        "section 3d": "Explain Section 3(d) of Patents Act with examples.",
-        "section 3(d)": "Explain Section 3(d) of Patents Act with examples.",
+    # Keyword based matching
+    if any(k in query_clean for k in ["sc-7", "boundary", "default-deny", "wildcard", "permit ip any any", "firewall"]):
+        return DEMO_RESPONSES["What are the mandatory requirements for boundary protection and default-deny under NIST SC-7?"]
+
+    if any(k in query_clean for k in ["telnet", "ssh", "ac-17", "cleartext", "remote access"]):
+        return DEMO_RESPONSES["Why is Telnet prohibited and what are the SSH requirements under CIS Controls and NIST AC-17?"]
+
+    if any(k in query_clean for k in ["snmp", "community", "public", "private", "snmpv3"]):
+        return DEMO_RESPONSES["What are the compliance requirements for SNMP community strings and SNMPv3?"]
+
+    # Generic sovereign compliance fallback
+    return {
+        "answer": (
+            f"Regarding your query on **network security compliance**: In accordance with **NIST SP 800-53 Rev. 5** "
+            "and **CIS Controls v8**, all multi-vendor routing, switching, and firewall appliances must maintain "
+            "hardened baseline configurations. Administrative access must be cryptographically protected (SSHv2, TLS 1.3), "
+            "perimeter boundaries must enforce default-deny policies, and audit logging must be enabled to centralized SIEM servers "
+            "[NIST SP 800-53 Rev. 5, Control AC-4, p.47; Control SC-7, p.312]."
+        ),
+        "citations": [
+            {
+                "source_title": "NIST SP 800-53 Rev. 5",
+                "section": "AC-4 (Information Flow Enforcement)",
+                "page": "47",
+                "authority": "NIST",
+                "regime": "Federal / Defense",
+                "relevance_score": 0.90,
+                "chunk_id": "nist-ac-4-gen",
+                "full_text": "Control AC-4: Enforce approved authorizations for controlling the flow of information across network interfaces."
+            }
+        ],
+        "regime_tags": ["NIST_800_53_R5", "CIS_v8"],
+        "confidence": "medium",
+        "language_detected": "en"
     }
-
-    for keyword, matched_query in keyword_map.items():
-        if keyword in query_lower:
-            return DEMO_RESPONSES[matched_query]
-
-    return None

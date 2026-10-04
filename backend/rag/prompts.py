@@ -65,10 +65,7 @@ def build_prompt(query: str, documents: list[dict]) -> tuple[str, str]:
 def build_langchain_prompt_template():
     """Return a LangChain-compatible PromptTemplate for RetrievalQA."""
     try:
-        try:
-            from langchain_core.prompts import PromptTemplate  # type: ignore[import-not-found, import-untyped]
-        except ImportError:
-            from langchain.prompts import PromptTemplate  # type: ignore[import-not-found, import-untyped]
+        from langchain_core.prompts import PromptTemplate
 
         combined_template = SYSTEM_PROMPT + "\n\n" + USER_PROMPT_TEMPLATE
         return PromptTemplate(
@@ -77,3 +74,4 @@ def build_langchain_prompt_template():
         )
     except ImportError:
         return None
+

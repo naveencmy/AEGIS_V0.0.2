@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Search,
   BookOpen,
@@ -7,232 +7,234 @@ import {
   Lock,
   Award,
   CreditCard,
-  Filter,
-  ChevronDown,
   ChevronRight,
+  ChevronDown,
   RefreshCw,
+  X,
 } from 'lucide-react';
 import { endpoints } from '../lib/api';
 import { cn } from '../lib/utils';
+import SeverityBadge from './SeverityBadge';
 
-const FRAMEWORK_STYLES = {
-  NIST:  { icon: ShieldCheck, badge: 'bg-blue-950/80 text-blue-300 border-blue-500/40',    dot: 'bg-blue-500'    },
-  CIS:   { icon: Lock,        badge: 'bg-emerald-950/80 text-emerald-300 border-emerald-500/40', dot: 'bg-emerald-500' },
-  ISO:   { icon: Award,       badge: 'bg-purple-950/80 text-purple-300 border-purple-500/40',    dot: 'bg-purple-500'  },
-  PCI:   { icon: CreditCard,  badge: 'bg-amber-950/80 text-amber-300 border-amber-500/40',       dot: 'bg-amber-500'   },
-};
-
-function getStyle(framework = '') {
-  const key = Object.keys(FRAMEWORK_STYLES).find((k) => framework.toUpperCase().includes(k));
-  return FRAMEWORK_STYLES[key] || { icon: BookOpen, badge: 'bg-slate-900 text-slate-300 border-slate-600/40', dot: 'bg-slate-500' };
-}
-
-function ControlCard({ control }) {
-  const [expanded, setExpanded] = useState(false);
-  const style  = getStyle(control.framework || '');
-  const Icon   = style.icon;
-
-  return (
-    <article
-      className="rounded-xl border border-surface-border bg-surface-card/80 overflow-hidden transition-all hover:border-surface-border-hi"
-      aria-label={`Control ${control.control_id}: ${control.title}`}
-    >
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={() => setExpanded(!expanded)}
-        onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); setExpanded(!expanded); } }}
-        className="flex items-start gap-3 p-4 cursor-pointer select-none"
-        aria-expanded={expanded}
-      >
-        <span
-          className={cn('inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[10px] font-mono font-bold uppercase shrink-0 mt-0.5', style.badge)}
-        >
-          <Icon className="h-3 w-3 shrink-0" aria-hidden="true" />
-          {control.control_id}
-        </span>
-
-        <div className="flex-1 min-w-0">
-          <h4 className="text-xs font-bold text-slate-200 leading-snug">{control.title}</h4>
-          {!expanded && (
-            <p className="mt-1 text-[11px] text-slate-500 line-clamp-2 leading-relaxed">
-              {control.description}
-            </p>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          {control.severity && (
-            <span className={cn(
-              'text-[9px] font-bold uppercase tracking-widest rounded-md px-1.5 py-0.5 font-mono',
-              control.severity?.toLowerCase() === 'critical' ? 'bg-red-500/15 text-red-400' :
-              control.severity?.toLowerCase() === 'high'     ? 'bg-orange-500/15 text-orange-400' :
-              control.severity?.toLowerCase() === 'medium'   ? 'bg-amber-500/15 text-amber-400' :
-                                                               'bg-emerald-500/15 text-emerald-400'
-            )}>
-              {control.severity}
-            </span>
-          )}
-          <span className="text-slate-600" style={{ transform: expanded ? 'rotate(90deg)' : undefined, transition: 'transform 0.15s' }}>
-            <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
-          </span>
-        </div>
-      </div>
-
-      {expanded && (
-        <div className="border-t border-surface-border bg-surface-base/60 px-4 py-3 space-y-3 animate-slide-in-up">
-          <p className="text-xs text-slate-300 leading-relaxed">{control.description}</p>
-
-          {control.guidance && (
-            <div className="rounded-lg border border-indigo-500/20 bg-indigo-950/20 p-3">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-400">Implementation Guidance</span>
-              <p className="mt-1.5 text-xs text-slate-400 leading-relaxed">{control.guidance}</p>
-            </div>
-          )}
-
-          <div className="flex items-center justify-between text-[11px] text-slate-600">
-            <span className="font-mono">{control.framework}</span>
-            {control.source_url && (
-              <a
-                href={control.source_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1 text-teal-400 hover:text-teal-300 hover:underline"
-              >
-                Official Standard
-                <ExternalLink className="h-3 w-3" aria-hidden="true" />
-              </a>
-            )}
-          </div>
-        </div>
-      )}
-    </article>
-  );
-}
+const FRAMEWORK_TABS = [
+  { id: 'ALL',            label: 'All Frameworks' },
+  { id: 'NIST_800_53_R5', label: 'NIST SP 800-53' },
+  { id: 'CIS_v8',         label: 'CIS Controls v8' },
+  { id: 'ISO27001_2022',  label: 'ISO 27001:2022' },
+  { id: 'PCI_DSS_4.0',    label: 'PCI-DSS v4.0' },
+];
 
 export function ThreatExplorer() {
-  const [frameworks,       setFrameworks]       = useState([]);
-  const [controls,         setControls]         = useState([]);
-  const [totalControls,    setTotalControls]    = useState(0);
-  const [searchQuery,      setSearchQuery]      = useState('');
-  const [selectedFw,       setSelectedFw]       = useState('');
-  const [loading,          setLoading]          = useState(false);
+  const [controls, setControls] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeTab, setActiveTab] = useState('ALL');
+  const [expandedId, setExpandedId] = useState(null);
+  const [totalCount, setTotalCount] = useState(0);
 
-  const loadFrameworks = async () => {
-    try {
-      const res = await endpoints.listFrameworks();
-      setFrameworks(res.data.frameworks || []);
-    } catch {}
-  };
-
-  const loadControls = useCallback(async (q = searchQuery, fw = selectedFw) => {
+  const fetchControls = async () => {
     setLoading(true);
     try {
-      const res = await endpoints.searchFrameworks({ q, framework: fw || undefined, page: 1, page_size: 40 });
-      setControls(res.data.controls || []);
-      setTotalControls(res.data.total || 0);
-    } catch {
-      setControls([]);
+      const res = await endpoints.searchFrameworks({
+        q: searchQuery || undefined,
+        framework: activeTab === 'ALL' ? undefined : activeTab,
+        page: 1,
+        page_size: 50,
+      });
+      setControls(res.data?.controls || []);
+      setTotalCount(res.data?.total || 0);
+    } catch (err) {
+      console.error('Failed to search controls:', err);
     } finally {
       setLoading(false);
     }
-  }, [searchQuery, selectedFw]);
+  };
 
   useEffect(() => {
-    loadFrameworks();
-    loadControls('', '');
-  }, []);
-
-  const handleSearch = (q) => {
-    setSearchQuery(q);
-    loadControls(q, selectedFw);
-  };
-
-  const handleFwChange = (fw) => {
-    setSelectedFw(fw);
-    loadControls(searchQuery, fw);
-  };
+    const timer = setTimeout(() => {
+      fetchControls();
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [searchQuery, activeTab]);
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      {/* Header */}
-      <div>
-        <h2 className="text-2xl font-extrabold tracking-tight text-slate-100">
-          Regulatory Standards Explorer
-        </h2>
-        <p className="text-sm text-slate-500 mt-0.5">
-          Authoritative full-text searchable compliance repository &bull; PostgreSQL 16 tsvector + pgvector
-        </p>
+    <div className="space-y-6">
+      {/* ── Page Header ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-slate-200">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+            Regulatory Knowledge Base
+          </h1>
+          <p className="text-sm text-slate-500 mt-1 font-normal">
+            Ground-truth controls, security baselines, and implementation guidance ingested in PostgreSQL pgvector.
+          </p>
+        </div>
+
+        <button
+          onClick={fetchControls}
+          disabled={loading}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 shadow-sm transition-colors"
+        >
+          <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+          Refresh
+        </button>
       </div>
 
-      {/* Search & filter */}
-      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-surface-border bg-surface-card/80 p-3">
-        <div className="relative flex-1 min-w-[260px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 pointer-events-none" aria-hidden="true" />
+      {/* ── Search Bar & Framework Tabs ── */}
+      <div className="space-y-3">
+        <div className="relative">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
           <input
             type="text"
             value={searchQuery}
-            onChange={(e) => handleSearch(e.target.value)}
-            placeholder="Search controls (e.g. 'boundary protection', 'AC-4', 'network segregation')…"
-            aria-label="Search regulatory controls"
-            className="w-full rounded-lg border border-surface-border bg-surface-base/60 pl-9 pr-4 py-2 text-xs text-slate-100 placeholder-slate-600 focus:border-indigo-500 focus:outline-none"
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search controls, requirements, guidance (e.g. boundary protection, encryption, SSH)..."
+            className="w-full rounded-lg border border-slate-300 bg-white pl-10 pr-10 py-2.5 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-brand-500 shadow-sm"
           />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
-        <div className="flex items-center gap-2">
-          <Filter className="h-3.5 w-3.5 text-slate-500" aria-hidden="true" />
-          <select
-            value={selectedFw}
-            onChange={(e) => handleFwChange(e.target.value)}
-            aria-label="Filter by framework"
-            className="rounded-lg border border-surface-border bg-surface-base/60 px-3 py-2 text-xs font-medium text-slate-300 focus:border-indigo-500 focus:outline-none"
-          >
-            <option value="">All Standards</option>
-            {frameworks.map((fw) => (
-              <option key={fw.framework} value={fw.framework}>
-                {fw.name} ({fw.count})
-              </option>
-            ))}
-          </select>
-
-          <button
-            onClick={() => loadControls(searchQuery, selectedFw)}
-            disabled={loading}
-            aria-label="Refresh results"
-            className="rounded-lg border border-surface-border bg-surface-card p-2 text-slate-500 hover:text-white transition-colors disabled:opacity-40"
-          >
-            <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} aria-hidden="true" />
-          </button>
+        {/* Framework Filter Tabs */}
+        <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1 rounded-lg w-fit text-xs font-semibold">
+          {FRAMEWORK_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={cn(
+                'px-3 py-1.5 rounded-md transition-colors',
+                activeTab === tab.id
+                  ? 'bg-white text-slate-900 shadow-sm font-bold'
+                  : 'text-slate-600 hover:text-slate-900'
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Results count */}
-      <div className="flex items-center justify-between text-[11px] text-slate-500">
-        <span>
-          Showing{' '}
-          <span className="text-slate-300 font-semibold">{controls.length}</span> of{' '}
-          <span className="text-slate-300 font-semibold">{totalControls}</span> authoritative controls
-        </span>
-        {loading && (
-          <span className="flex items-center gap-1.5 text-indigo-400">
-            <RefreshCw className="h-3 w-3 animate-spin" aria-hidden="true" />
-            Searching…
-          </span>
-        )}
+      {/* ── Results Count ── */}
+      <div className="flex items-center justify-between text-xs text-slate-500 font-medium px-1">
+        <span>Found <strong className="text-slate-800">{totalCount || controls.length}</strong> Regulatory Controls</span>
+        <span>Indexed via BGE-M3 (1024-dim dense) + tsvector BM25</span>
       </div>
 
-      {/* Controls grid */}
+      {/* ── Control Cards List ── */}
       {controls.length === 0 && !loading ? (
-        <div className="rounded-xl border border-dashed border-surface-border p-12 text-center">
-          <BookOpen className="mx-auto h-8 w-8 text-slate-700 mb-3" aria-hidden="true" />
-          <p className="text-sm font-semibold text-slate-400">No controls found</p>
-          <p className="text-xs text-slate-600 mt-1">Try adjusting your search or framework filter.</p>
+        <div className="rounded-xl border border-slate-200 bg-white p-12 text-center shadow-sm">
+          <BookOpen className="w-10 h-10 text-slate-400 mx-auto mb-2" />
+          <div className="text-sm font-bold text-slate-800">No Matching Controls</div>
+          <p className="text-xs text-slate-500 mt-1">
+            Try a different search term or select another framework filter.
+          </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {controls.map((c) => (
-            <ControlCard key={c.id} control={c} />
-          ))}
+        <div className="space-y-3">
+          {controls.map((c) => {
+            const isExpanded = expandedId === c.id;
+
+            return (
+              <div
+                key={c.id}
+                className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden hover:border-slate-300 transition-all"
+              >
+                <div
+                  onClick={() => setExpandedId(isExpanded ? null : c.id)}
+                  className="p-4 cursor-pointer flex items-start justify-between gap-4 hover:bg-slate-50/50 transition-colors select-none"
+                >
+                  <div className="flex items-start gap-3">
+                    <button className="mt-0.5 text-slate-400">
+                      {isExpanded ? (
+                        <ChevronDown className="w-4 h-4" />
+                      ) : (
+                        <ChevronRight className="w-4 h-4" />
+                      )}
+                    </button>
+
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2 mb-1">
+                        <span className="font-mono text-xs font-bold text-cyan-800 bg-cyan-50 border border-cyan-200 px-2 py-0.5 rounded shadow-2xs">
+                          {c.control_id}
+                        </span>
+                        <span className="text-xs font-semibold text-slate-500">
+                          {c.framework}
+                        </span>
+                        {c.severity && (
+                          <SeverityBadge severity={c.severity} />
+                        )}
+                        <span className="cyber-key-pill text-[9px]">
+                          ★ STANDARD
+                        </span>
+                      </div>
+
+                      <h3 className="text-sm font-bold text-slate-900">{c.title}</h3>
+                      {!isExpanded && (
+                        <p className="text-xs text-slate-600 mt-1 line-clamp-2 leading-relaxed">
+                          {c.description}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {isExpanded && (
+                  <div className="px-5 pb-5 pt-3 border-t border-slate-100 bg-slate-50/40 space-y-4 text-xs">
+                    {/* Main Requirement Callout - Highlighted */}
+                    <div className="p-3.5 rounded-lg bg-gradient-to-r from-cyan-50/70 via-white to-blue-50/40 border border-cyan-200 space-y-1.5 shadow-2xs">
+                      <div className="flex items-center gap-2">
+                        <span className="cyber-key-pill">
+                          ★ MAIN REQUIREMENT
+                        </span>
+                        <span className="text-[11px] font-bold text-cyan-950 uppercase tracking-wider">
+                          Mandatory Regulatory Baseline
+                        </span>
+                      </div>
+                      <p className="text-slate-800 leading-relaxed font-sans text-xs font-medium">
+                        {c.description}
+                      </p>
+                    </div>
+
+                    {c.guidance && (
+                      <div className="p-3.5 rounded-lg bg-white border border-slate-200 space-y-1.5 shadow-2xs">
+                        <div className="flex items-center gap-2">
+                          <span className="cyber-key-pill bg-slate-800 text-cyan-300 border-cyan-500/50">
+                            ★ IMPLEMENTATION GUIDANCE
+                          </span>
+                          <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider">
+                            Hardened Practice
+                          </span>
+                        </div>
+                        <p className="text-slate-700 leading-relaxed font-sans text-xs">{c.guidance}</p>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-200/80 text-[11px]">
+                      <span className="text-slate-500 font-mono">
+                        Source Reference: {c.source_page ? `Page ${c.source_page}` : 'Authoritative Standards Spec'}
+                      </span>
+                      {c.source_url && (
+                        <a
+                          href={c.source_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 font-semibold text-cyan-700 hover:text-cyan-900 hover:underline"
+                        >
+                          Official Publication <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

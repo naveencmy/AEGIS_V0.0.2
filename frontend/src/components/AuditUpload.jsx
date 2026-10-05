@@ -1,10 +1,8 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Upload,
   FileText,
   X,
-  ChevronDown,
-  ChevronRight,
   Play,
   RotateCcw,
   CheckCircle2,
@@ -15,24 +13,25 @@ import {
   Wifi,
   FileCode2,
   Loader2,
+  Check,
+  ChevronRight,
 } from 'lucide-react';
 import { endpoints } from '../lib/api';
 import { cn } from '../lib/utils';
 
-/* ─── Static config ─────────────────────────────────────────────────── */
 const VENDORS = [
-  { id: 'cisco_ios',   label: 'Cisco IOS',         icon: Server, color: 'text-blue-400'   },
-  { id: 'cisco_asa',   label: 'Cisco ASA',          icon: Shield, color: 'text-blue-300'   },
-  { id: 'palo_alto',   label: 'Palo Alto PAN-OS',   icon: Wifi,   color: 'text-orange-400' },
-  { id: 'juniper',     label: 'Juniper JunOS',      icon: Cpu,    color: 'text-teal-400'   },
-  { id: 'fortinet',    label: 'Fortinet FortiOS',   icon: Shield, color: 'text-red-400'    },
+  { id: 'cisco_asa',   label: 'Cisco ASA',          sub: 'Adaptive Security Appliance', icon: Shield },
+  { id: 'cisco_ios',   label: 'Cisco IOS / XE',     sub: 'Enterprise Routers & Switches', icon: Server },
+  { id: 'palo_alto',   label: 'Palo Alto PAN-OS',   sub: 'Next-Gen Firewall XML',       icon: Wifi },
+  { id: 'juniper',     label: 'Juniper JunOS',      sub: 'Security Gateways & Switches', icon: Cpu },
+  { id: 'fortinet',    label: 'Fortinet FortiOS',   sub: 'FortiGate Security Fabric',   icon: Shield },
 ];
 
 const FRAMEWORKS = [
   { id: 'nist_800_53_r5', label: 'NIST SP 800-53 Rev 5', sub: 'Federal & Defense — 1,000+ controls' },
-  { id: 'cis_v8',         label: 'CIS Controls v8',       sub: 'IG1/IG2/IG3 — 153 Safeguards'       },
-  { id: 'iso27001_2022',  label: 'ISO/IEC 27001:2022',    sub: 'ISMS — Annex A Controls'             },
-  { id: 'pci_dss_4_0',    label: 'PCI-DSS v4.0',         sub: 'Payment — Requirements 1–12'         },
+  { id: 'cis_v8',         label: 'CIS Controls v8',       sub: 'IG1 / IG2 / IG3 — 153 Safeguards' },
+  { id: 'iso27001_2022',  label: 'ISO/IEC 27001:2022',    sub: 'ISMS — Annex A Security Controls' },
+  { id: 'pci_dss_4_0',    label: 'PCI-DSS v4.0',         sub: 'Payment Perimeter Network Defense' },
 ];
 
 const SAMPLE_CONFIGS = {
@@ -102,359 +101,467 @@ banner motd ^
     </entry>
   </devices>
 </config>`,
-
-  juniper: `set system host-name EDGE-FW-01
-set system root-authentication plain-text-password-value juniper123
-set system services telnet
-set system services ssh protocol-version v1
-set system ntp server 0.0.0.0
-set security zones security-zone untrust interfaces ge-0/0/0.0 host-inbound-traffic system-services all
-set firewall family inet filter PERMIT-ALL term permit-all then accept
-set security policies from-zone untrust to-zone trust policy allow-all match source-address any
-set security policies from-zone untrust to-zone trust policy allow-all match destination-address any
-set security policies from-zone untrust to-zone trust policy allow-all then permit`,
-
-  fortinet: `config system global
-    set hostname FORTIGATE-01
-    set admin-telnet enable
-    set admin-ssh-port 22
-end
-config firewall policy
-    edit 1
-        set name "PERMIT_ALL"
-        set srcintf "wan1"
-        set dstintf "internal"
-        set srcaddr "all"
-        set dstaddr "all"
-        set action accept
-        set schedule "always"
-        set service "ALL"
-        set logtraffic all
-    next
-end
-config system snmp community
-    edit 1
-        set name "public"
-        set status enable
-    next
-end`,
 };
 
-/* ─── Component ─────────────────────────────────────────────────────── */
 export function AuditUpload({ onAuditCreated }) {
-  const [vendor,          setVendor]          = useState('cisco_asa');
-  const [selectedFws,     setSelectedFws]     = useState(['nist_800_53_r5']);
-  const [configText,      setConfigText]      = useState('');
-  const [uploadedFile,    setUploadedFile]    = useState(null);
-  const [isDragging,      setIsDragging]      = useState(false);
-  const [isSubmitting,    setIsSubmitting]    = useState(false);
-  const [uploadStage,     setUploadStage]     = useState('');
-  const [error,           setError]           = useState(null);
+  const [selectedVendor, setSelectedVendor] = useState('cisco_asa');
+  const [deviceName, setDeviceName] = useState('BORDER-FW-01');
+  const [inputMode, setInputMode] = useState('paste'); // 'paste' | 'file'
+  const [configText, setConfigText] = useState(SAMPLE_CONFIGS.cisco_asa);
+  const [file, setFile] = useState(null);
+  const [selectedFrameworks, setSelectedFrameworks] = useState([
+    'nist_800_53_r5',
+    'cis_v8',
+    'iso27001_2022',
+    'pci_dss_4_0',
+  ]);
 
+  const [loading, setLoading] = useState(false);
+  const [progressStep, setProgressStep] = useState(0);
+  const [error, setError] = useState(null);
+  const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef(null);
 
-  /* Drag-and-drop handlers */
-  const onDragOver  = (e) => { e.preventDefault(); setIsDragging(true);  };
-  const onDragLeave = (e) => { e.preventDefault(); setIsDragging(false); };
-  const onDrop      = useCallback((e) => {
-    e.preventDefault();
-    setIsDragging(false);
-    const file = e.dataTransfer.files[0];
-    if (file) handleFileSelect(file);
-  }, []);
+  const PROGRESS_STEPS = [
+    'Parsing multi-vendor AST structure...',
+    'Normalizing security rules & ACL parameters...',
+    'Hybrid dense vector search (pgvector BGE-M3)...',
+    'Reciprocal Rank Fusion & cross-encoder re-ranking...',
+    'Mistral-7B GBNF grammar evaluation...',
+    'Anchoring verified findings into evidence ledger...',
+  ];
 
-  const handleFileSelect = (file) => {
-    setUploadedFile(file);
-    const reader = new FileReader();
-    reader.onload = (e) => setConfigText(e.target.result || '');
-    reader.readAsText(file);
-  };
-
-  const toggleFramework = (id) => {
-    setSelectedFws((prev) =>
-      prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id]
-    );
-  };
-
-  const loadSample = () => {
-    setConfigText(SAMPLE_CONFIGS[vendor] || SAMPLE_CONFIGS.cisco_asa);
-    setUploadedFile(null);
-  };
-
-  const reset = () => {
-    setConfigText('');
-    setUploadedFile(null);
-    setError(null);
-    setUploadStage('');
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!configText.trim() || selectedFws.length === 0) return;
-
-    setIsSubmitting(true);
-    setError(null);
-
-    try {
-      // Step 1: Upload device config
-      setUploadStage('Parsing device configuration…');
-      const formData = new FormData();
-      const blob = new Blob([configText], { type: 'text/plain' });
-      formData.append('file', blob, `${vendor}_config.txt`);
-      formData.append('vendor', vendor);
-
-      const uploadRes = await endpoints.uploadDevice(formData);
-      const deviceId  = uploadRes.data.id;
-
-      // Step 2: Trigger compliance audit
-      setUploadStage('Running sovereign compliance audit…');
-      const auditRes = await endpoints.createAudit({
-        device_config_id: deviceId,
-        frameworks: selectedFws,
-      });
-
-      onAuditCreated(auditRes.data.audit_job_id);
-    } catch (err) {
-      setError(err.response?.data?.detail || err.message || 'Audit submission failed');
-    } finally {
-      setIsSubmitting(false);
-      setUploadStage('');
+  const handleVendorSelect = (vendorId) => {
+    setSelectedVendor(vendorId);
+    if (SAMPLE_CONFIGS[vendorId]) {
+      setConfigText(SAMPLE_CONFIGS[vendorId]);
+      setDeviceName(vendorId === 'cisco_ios' ? 'CORE-RTR-01' : 'BORDER-FW-01');
     }
   };
 
-  const hasConfig   = configText.trim().length > 0;
-  const canSubmit   = hasConfig && selectedFws.length > 0 && !isSubmitting;
-  const currentVendor = VENDORS.find((v) => v.id === vendor);
+  const handleFrameworkToggle = (fwId) => {
+    setSelectedFrameworks((prev) =>
+      prev.includes(fwId) ? prev.filter((id) => id !== fwId) : [...prev, fwId]
+    );
+  };
+
+  const handleFileDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const droppedFile = e.dataTransfer.files[0];
+    if (droppedFile) processFile(droppedFile);
+  };
+
+  const processFile = (f) => {
+    setFile(f);
+    setDeviceName(f.name.replace(/\.[^/.]+$/, '').toUpperCase());
+    const reader = new FileReader();
+    reader.onload = (e) => setConfigText(e.target.result);
+    reader.readAsText(f);
+  };
+
+  const handleExecuteAudit = async () => {
+    if (!configText.trim() && !file) {
+      setError('Please provide a configuration via paste or file upload.');
+      return;
+    }
+    if (selectedFrameworks.length === 0) {
+      setError('Please select at least one regulatory framework.');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setProgressStep(0);
+
+    // Simulated progress timer while backend processes
+    const stepInterval = setInterval(() => {
+      setProgressStep((prev) => (prev < PROGRESS_STEPS.length - 1 ? prev + 1 : prev));
+    }, 1200);
+
+    try {
+      // 1. Upload device config
+      const formData = new FormData();
+      if (file) {
+        formData.append('file', file);
+      } else {
+        const blob = new Blob([configText], { type: 'text/plain' });
+        formData.append('file', blob, `${deviceName.toLowerCase()}_config.txt`);
+      }
+      formData.append('vendor', selectedVendor);
+      formData.append('device_name', deviceName || 'UNNAMED-APPLIANCE');
+
+      const uploadRes = await endpoints.uploadDevice(formData);
+      const deviceConfigId = uploadRes.data.device_config_id;
+
+      // 2. Trigger Compliance Audit
+      const auditRes = await endpoints.createAudit({
+        device_config_id: deviceConfigId,
+        frameworks: selectedFrameworks,
+      });
+
+      clearInterval(stepInterval);
+      setProgressStep(PROGRESS_STEPS.length - 1);
+
+      if (onAuditCreated) {
+        onAuditCreated(auditRes.data.audit_job_id);
+      }
+    } catch (err) {
+      clearInterval(stepInterval);
+      console.error('Audit execution error:', err);
+      setError(
+        err.response?.data?.detail ||
+          'Failed to execute compliance audit. Check backend connectivity.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <div className="space-y-8">
+      {/* ── 5-Step Progress Header ── */}
+      <div className="p-4 rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex items-center justify-between max-w-4xl mx-auto">
+          {[
+            { step: '01', label: 'DEVICE' },
+            { step: '02', label: 'CONFIGURATION' },
+            { step: '03', label: 'FRAMEWORKS' },
+            { step: '04', label: 'AUDIT' },
+            { step: '05', label: 'RESULTS' },
+          ].map((item, idx) => (
+            <React.Fragment key={item.step}>
+              <div className="flex items-center gap-2">
+                <span
+                  className={cn(
+                    'w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold font-mono',
+                    idx <= 2
+                      ? 'bg-brand-600 text-white'
+                      : 'bg-slate-100 text-slate-500'
+                  )}
+                >
+                  {item.step}
+                </span>
+                <span className="hidden sm:inline text-xs font-bold tracking-wider text-slate-700">
+                  {item.label}
+                </span>
+              </div>
+              {idx < 4 && <ChevronRight className="w-4 h-4 text-slate-300" />}
+            </React.Fragment>
+          ))}
+        </div>
+      </div>
 
-      {/* ── Vendor Selection ── */}
-      <div>
-        <label className="block text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">
-          1 — Select Network Appliance Vendor
-        </label>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+      {/* ── Pre-Audit Directives & Highlighted Scope ── */}
+      <div className="cyber-point-card bg-gradient-to-r from-cyan-50/50 via-white to-blue-50/30 border border-cyan-200/90 shadow-sm rounded-xl p-4">
+        <div className="flex items-center justify-between pb-2.5 border-b border-cyan-100">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-900">
+              Audit Execution Directives & Scope
+            </span>
+          </div>
+          <span className="cyber-key-pill text-[10px]">
+            ★ CORE WORKBENCH RULES
+          </span>
+        </div>
+
+        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+          <div className="cyber-bullet-item text-slate-700">
+            <strong className="text-slate-950 font-bold bg-cyan-100/70 px-1.5 py-0.5 rounded border border-cyan-300 mr-1.5">
+              ★ MAIN RULE:
+            </strong>
+            Input raw vendor running configurations. Passwords, hashes, and secrets are evaluated for cryptographic weakness strictly inside the air-gapped boundary.
+          </div>
+          <div className="cyber-bullet-item text-slate-700">
+            <strong className="text-slate-950 font-bold bg-cyan-100/70 px-1.5 py-0.5 rounded border border-cyan-300 mr-1.5">
+              ★ REASONING GATE:
+            </strong>
+            Violations are strictly validated by local Mistral-7B GBNF grammar constraints against ingested regulatory standards with zero hallucination.
+          </div>
+        </div>
+      </div>
+
+      {/* ── 01: Vendor Appliance Selection ── */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            01. Select Network Appliance & Vendor Platform
+          </label>
+          <span className="text-xs text-cyan-700 font-semibold flex items-center gap-1 font-mono">
+            <span className="w-1.5 h-1.5 rounded-full bg-cyan-500" />
+            Deterministic AST Parsing
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {VENDORS.map((v) => {
-            const Icon    = v.icon;
-            const isActive = vendor === v.id;
+            const Icon = v.icon;
+            const isSelected = selectedVendor === v.id;
             return (
               <button
                 key={v.id}
                 type="button"
-                onClick={() => { setVendor(v.id); reset(); }}
-                aria-pressed={isActive}
+                onClick={() => handleVendorSelect(v.id)}
                 className={cn(
-                  'flex flex-col items-center gap-2 rounded-xl border p-3.5 text-xs font-semibold transition-all',
-                  isActive
-                    ? 'border-indigo-500/60 bg-indigo-500/10 text-white shadow-glow-brand'
-                    : 'border-surface-border bg-surface-card text-slate-400 hover:border-surface-border-hi hover:text-slate-200'
-                )}
-              >
-                <Icon className={cn('h-5 w-5', isActive ? 'text-indigo-300' : v.color)} aria-hidden="true" />
-                <span>{v.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* ── Framework Matrix ── */}
-      <div>
-        <label className="block text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">
-          2 — Select Compliance Frameworks
-          <span className="ml-2 text-slate-600 normal-case tracking-normal font-normal">(select one or more)</span>
-        </label>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-          {FRAMEWORKS.map((fw) => {
-            const isSelected = selectedFws.includes(fw.id);
-            return (
-              <button
-                key={fw.id}
-                type="button"
-                onClick={() => toggleFramework(fw.id)}
-                aria-pressed={isSelected}
-                className={cn(
-                  'flex items-start gap-3 rounded-xl border p-3.5 text-left transition-all',
+                  'rounded-xl border p-4 text-left transition-all relative flex flex-col justify-between shadow-sm',
                   isSelected
-                    ? 'border-indigo-500/50 bg-indigo-500/8 text-white'
-                    : 'border-surface-border bg-surface-card text-slate-400 hover:border-surface-border-hi hover:text-slate-200'
+                    ? 'border-cyan-500 bg-cyan-50/70 ring-1 ring-cyan-500 shadow-cyber-sm'
+                    : 'border-slate-200 bg-white hover:border-slate-300'
                 )}
               >
-                <div className={cn(
-                  'flex h-4 w-4 shrink-0 items-center justify-center rounded border mt-0.5 transition-all',
-                  isSelected ? 'border-indigo-500 bg-indigo-600' : 'border-surface-border-hi'
-                )}>
-                  {isSelected && <CheckCircle2 className="h-3 w-3 text-white" aria-hidden="true" />}
-                </div>
                 <div>
-                  <div className="text-xs font-bold">{fw.label}</div>
-                  <div className="text-[10px] text-slate-500 mt-0.5">{fw.sub}</div>
+                  <div className="flex items-center justify-between mb-2">
+                    <Icon
+                      className={cn(
+                        'w-5 h-5',
+                        isSelected ? 'text-cyan-600' : 'text-slate-400'
+                      )}
+                    />
+                    {isSelected && (
+                      <span className="w-4 h-4 rounded-full bg-cyan-600 text-white flex items-center justify-center">
+                        <Check className="w-2.5 h-2.5 stroke-[3]" />
+                      </span>
+                    )}
+                  </div>
+                  <div className="font-bold text-slate-900 text-xs">{v.label}</div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">{v.sub}</div>
                 </div>
               </button>
             );
           })}
         </div>
-        {selectedFws.length === 0 && (
-          <p className="mt-1.5 text-xs text-amber-500">⚠ Select at least one compliance framework</p>
-        )}
       </div>
 
-      {/* ── Config Input ── */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <label className="block text-xs font-bold uppercase tracking-widest text-slate-400">
-            3 — Device Configuration
+      {/* ── 02: Configuration Input ── */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            02. Network Configuration Payload
           </label>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500">Quick Samples:</span>
+            <button
+              onClick={() => handleVendorSelect('cisco_asa')}
+              className="text-[11px] font-semibold text-brand-600 hover:text-brand-800 bg-brand-50 hover:bg-brand-100 px-2 py-0.5 rounded border border-brand-200"
+            >
+              Cisco ASA
+            </button>
+            <button
+              onClick={() => handleVendorSelect('cisco_ios')}
+              className="text-[11px] font-semibold text-brand-600 hover:text-brand-800 bg-brand-50 hover:bg-brand-100 px-2 py-0.5 rounded border border-brand-200"
+            >
+              Cisco IOS
+            </button>
+            <button
+              onClick={() => handleVendorSelect('palo_alto')}
+              className="text-[11px] font-semibold text-brand-600 hover:text-brand-800 bg-brand-50 hover:bg-brand-100 px-2 py-0.5 rounded border border-brand-200"
+            >
+              Palo Alto XML
+            </button>
+          </div>
+        </div>
+
+        {/* Input Format Mode Toggle & Device Identifier */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-3 rounded-t-xl border border-b-0 border-slate-200">
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={loadSample}
-              className="flex items-center gap-1.5 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-1 text-xs font-semibold text-indigo-300 hover:bg-indigo-500/20 transition-colors"
+              onClick={() => setInputMode('paste')}
+              className={cn(
+                'px-3 py-1.5 rounded-md text-xs font-semibold transition-colors',
+                inputMode === 'paste'
+                  ? 'bg-brand-600 text-white shadow-sm'
+                  : 'text-slate-600 hover:bg-slate-100'
+              )}
             >
-              <FileCode2 className="h-3.5 w-3.5" aria-hidden="true" />
-              Load {currentVendor?.label} Sample
+              Paste Configuration
             </button>
-            {hasConfig && (
-              <button
-                type="button"
-                onClick={reset}
-                className="flex items-center gap-1 rounded-lg border border-surface-border px-2.5 py-1 text-xs text-slate-500 hover:text-red-400 hover:border-red-500/30 transition-colors"
-              >
-                <RotateCcw className="h-3 w-3" aria-hidden="true" />
-                Clear
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => setInputMode('file')}
+              className={cn(
+                'px-3 py-1.5 rounded-md text-xs font-semibold transition-colors',
+                inputMode === 'file'
+                  ? 'bg-brand-600 text-white shadow-sm'
+                  : 'text-slate-600 hover:bg-slate-100'
+              )}
+            >
+              Upload File (.txt, .conf, .xml)
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500 font-medium">Device Name:</span>
+            <input
+              type="text"
+              value={deviceName}
+              onChange={(e) => setDeviceName(e.target.value)}
+              placeholder="e.g. BORDER-FW-01"
+              className="text-xs font-mono font-semibold px-2.5 py-1 rounded border border-slate-300 bg-slate-50 focus:bg-white text-slate-900 w-44"
+            />
           </div>
         </div>
 
-        {/* Drop zone */}
-        <div
-          onDragOver={onDragOver}
-          onDragLeave={onDragLeave}
-          onDrop={onDrop}
-          className={cn(
-            'relative rounded-xl border-2 border-dashed transition-all',
-            isDragging
-              ? 'border-indigo-500 bg-indigo-500/8'
-              : 'border-surface-border hover:border-surface-border-hi'
-          )}
-        >
-          {/* File indicator */}
-          {uploadedFile && (
-            <div className="flex items-center justify-between bg-indigo-500/10 px-3.5 py-2 border-b border-surface-border rounded-t-xl">
-              <div className="flex items-center gap-2 text-xs text-indigo-300">
-                <FileText className="h-3.5 w-3.5" aria-hidden="true" />
-                <span className="font-mono font-semibold">{uploadedFile.name}</span>
-                <span className="text-slate-500">({(uploadedFile.size / 1024).toFixed(1)} KB)</span>
-              </div>
-              <button
-                type="button"
-                onClick={reset}
-                aria-label="Remove file"
-                className="text-slate-500 hover:text-red-400 transition-colors"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
+        {/* Editor Body */}
+        {inputMode === 'paste' ? (
+          <div className="rounded-b-xl border border-slate-200 overflow-hidden shadow-sm">
+            <div className="bg-slate-900 px-4 py-2 border-b border-slate-800 flex items-center justify-between text-xs text-slate-400 font-mono">
+              <span>ACTIVE INPUT BUFFER</span>
+              <span>{configText.split('\n').length} lines · {configText.length} bytes</span>
             </div>
-          )}
-
-          {/* Textarea */}
-          <textarea
-            value={configText}
-            onChange={(e) => setConfigText(e.target.value)}
-            placeholder={`Paste ${currentVendor?.label || 'device'} running configuration here…\n\nOr drag-and-drop a config file, or click "Load Sample" above.`}
-            aria-label={`${currentVendor?.label} configuration input`}
-            rows={14}
-            className="w-full bg-transparent rounded-xl px-4 py-3.5 font-mono text-xs text-slate-200 placeholder-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500/30 resize-y leading-relaxed"
-          />
-
-          {/* Drag overlay */}
-          {isDragging && (
-            <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-indigo-500/15 pointer-events-none">
-              <div className="text-center">
-                <Upload className="mx-auto h-8 w-8 text-indigo-400 mb-2" aria-hidden="true" />
-                <p className="text-sm font-semibold text-indigo-300">Drop config file here</p>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="flex items-center justify-between mt-2">
-          <button
-            type="button"
+            <textarea
+              value={configText}
+              onChange={(e) => setConfigText(e.target.value)}
+              rows={14}
+              placeholder="Paste raw router or firewall configuration here..."
+              className="w-full p-4 bg-slate-900 text-slate-100 font-mono text-xs leading-relaxed focus:outline-none resize-y selection:bg-brand-600 selection:text-white"
+              spellCheck={false}
+            />
+          </div>
+        ) : (
+          <div
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleFileDrop}
             onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 transition-colors"
+            className={cn(
+              'rounded-b-xl border-2 border-dashed p-12 text-center cursor-pointer transition-all bg-white',
+              dragOver ? 'border-brand-500 bg-brand-50/50' : 'border-slate-300 hover:border-slate-400'
+            )}
           >
-            <Upload className="h-3.5 w-3.5" aria-hidden="true" />
-            Upload file instead
-          </button>
-          {hasConfig && (
-            <span className="text-[11px] text-slate-600 font-mono">
-              {configText.split('\n').length} lines &bull; {configText.length.toLocaleString()} chars
-            </span>
-          )}
-        </div>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".txt,.cfg,.conf,.xml,.set"
-          className="hidden"
-          onChange={(e) => { if (e.target.files?.[0]) handleFileSelect(e.target.files[0]); }}
-          aria-label="Upload configuration file"
-        />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".txt,.conf,.cfg,.xml"
+              className="hidden"
+              onChange={(e) => e.target.files[0] && processFile(e.target.files[0])}
+            />
+            <div className="w-12 h-12 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center mx-auto mb-3">
+              <Upload className="w-6 h-6" />
+            </div>
+            <div className="text-sm font-bold text-slate-800">
+              {file ? file.name : 'Click to select or drag and drop network configuration'}
+            </div>
+            <p className="text-xs text-slate-500 mt-1">
+              Supports Cisco running-config, Palo Alto XML export, JunOS flat set syntax, FortiOS full-config
+            </p>
+          </div>
+        )}
       </div>
 
-      {/* ── Error ── */}
+      {/* ── 03: Framework Selection ── */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            03. Target Regulatory Frameworks & Standards
+          </label>
+          <span className="text-xs text-cyan-700 font-semibold font-mono flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-cyan-500" />
+            PostgreSQL pgvector Grounded
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {FRAMEWORKS.map((fw) => {
+            const isChecked = selectedFrameworks.includes(fw.id);
+            return (
+              <div
+                key={fw.id}
+                onClick={() => handleFrameworkToggle(fw.id)}
+                className={cn(
+                  'rounded-xl border p-4 cursor-pointer transition-all flex items-start justify-between shadow-sm select-none',
+                  isChecked
+                    ? 'border-cyan-500 bg-cyan-50/70 ring-1 ring-cyan-500 shadow-cyber-sm'
+                    : 'border-slate-200 bg-white hover:border-slate-300'
+                )}
+              >
+                <div>
+                  <div className="font-bold text-xs text-slate-900">{fw.label}</div>
+                  <div className="text-[11px] text-slate-500 mt-1">{fw.sub}</div>
+                </div>
+
+                <div
+                  className={cn(
+                    'w-4 h-4 rounded flex items-center justify-center shrink-0 mt-0.5 border transition-colors',
+                    isChecked
+                      ? 'bg-cyan-600 border-cyan-600 text-white'
+                      : 'border-slate-300 bg-white'
+                  )}
+                >
+                  {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── Error Banner ── */}
       {error && (
-        <div className="flex items-start gap-2.5 rounded-xl border border-red-500/30 bg-red-500/8 px-4 py-3">
-          <AlertCircle className="h-4 w-4 text-red-400 mt-0.5 shrink-0" aria-hidden="true" />
-          <div>
-            <p className="text-xs font-bold text-red-400">Audit Submission Failed</p>
-            <p className="text-xs text-red-300/80 mt-0.5">{error}</p>
+        <div className="p-4 rounded-xl border border-red-200 bg-red-50 text-red-800 text-xs flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+            <span>{error}</span>
           </div>
-          <button onClick={() => setError(null)} className="ml-auto text-red-500 hover:text-red-300">
-            <X className="h-3.5 w-3.5" />
+          <button onClick={() => setError(null)} className="text-red-600 hover:text-red-900">
+            <X className="w-4 h-4" />
           </button>
         </div>
       )}
 
-      {/* ── Submit ── */}
-      <div className="flex items-center justify-between pt-2 border-t border-surface-border">
-        <div className="text-[11px] text-slate-600">
-          {selectedFws.length > 0 && (
-            <span>
-              Auditing against:{' '}
-              <span className="text-slate-400 font-medium">
-                {FRAMEWORKS.filter((f) => selectedFws.includes(f.id)).map((f) => f.label).join(', ')}
-              </span>
+      {/* ── Active Execution Step Tracker (When Loading) ── */}
+      {loading && (
+        <div className="rounded-xl border border-cyan-300 bg-cyan-50/80 p-5 shadow-cyber-sm space-y-3">
+          <div className="flex items-center justify-between text-xs font-semibold text-cyan-950">
+            <span className="flex items-center gap-2">
+              <Loader2 className="w-4 h-4 text-cyan-600 animate-spin" />
+              Sovereign Compliance Reasoning in Progress
             </span>
-          )}
+            <span className="font-mono font-bold text-cyan-800">{progressStep + 1} / {PROGRESS_STEPS.length}</span>
+          </div>
+
+          <div className="h-2 rounded-full bg-cyan-200 overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-cyan-500 to-cyan-600 transition-all duration-500 rounded-full"
+              style={{ width: `${((progressStep + 1) / PROGRESS_STEPS.length) * 100}%` }}
+            />
+          </div>
+
+          <div className="text-xs font-mono text-cyan-900 font-semibold">
+            → {PROGRESS_STEPS[progressStep]}
+          </div>
+        </div>
+      )}
+
+      {/* ── Execute Action Button ── */}
+      <div className="pt-4 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="text-xs text-slate-500">
+          Target Appliance: <strong className="text-slate-800 font-mono">{deviceName}</strong> · Frameworks:{' '}
+          <strong className="text-cyan-700 font-bold">{selectedFrameworks.length} Selected</strong>
         </div>
 
         <button
-          type="submit"
-          disabled={!canSubmit}
+          onClick={handleExecuteAudit}
+          disabled={loading || (!configText.trim() && !file)}
           className={cn(
-            'flex items-center gap-2.5 rounded-xl px-5 py-2.5 text-sm font-bold transition-all',
-            canSubmit
-              ? 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-lg shadow-indigo-600/25 hover:shadow-indigo-500/30'
-              : 'bg-surface-muted text-slate-600 cursor-not-allowed'
+            'inline-flex items-center gap-2.5 px-6 py-3 rounded-lg text-xs font-bold uppercase tracking-wider text-white shadow-md transition-all',
+            loading || (!configText.trim() && !file)
+              ? 'bg-slate-400 cursor-not-allowed'
+              : 'bg-gradient-to-r from-brand-600 via-cyan-600 to-brand-700 hover:from-brand-700 hover:via-cyan-700 hover:to-brand-800 hover:shadow-cyber-sm hover:scale-[1.01]'
           )}
         >
-          {isSubmitting ? (
+          {loading ? (
             <>
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              <span>{uploadStage || 'Submitting…'}</span>
+              <Loader2 className="w-4 h-4 animate-spin" /> Evaluating Configuration...
             </>
           ) : (
             <>
-              <Play className="h-4 w-4" aria-hidden="true" />
-              <span>Execute Sovereign Compliance Audit</span>
+              <Play className="w-4 h-4 fill-current" /> RUN SOVEREIGN COMPLIANCE AUDIT
             </>
           )}
         </button>
       </div>
-    </form>
+    </div>
   );
 }
